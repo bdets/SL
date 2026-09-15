@@ -1,0 +1,16 @@
+{
+  "name": "পড়ার খাতা — Study Ledger",
+  "short_name": "পড়ার খাতা",
+  "description": "ছাত্র-টিউটর-অভিভাবকের পড়াশোনা তদারকি ও রিভিশন লগ",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#FAF6ED",
+  "theme_color": "#1F3A5F",
+  "lang": "bn",
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ]
+}

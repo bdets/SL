@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="bn">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>পড়ার খাতা — Study Ledger</title>
+<meta name="theme-color" content="#1F3A5F" />
+<link rel="manifest" href="manifest.json" />
+<link rel="icon" href="icons/icon-192.png" />
+<link rel="apple-touch-icon" href="icons/icon-192.png" />
+<meta name="mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Bengali:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+<div id="toast-zone" class="toast-zone" aria-live="polite"></div>
+
+<!-- ================= LOGIN SCREEN ================= -->
+<div id="login-screen" class="login-screen">
+  <div class="login-card">
+    <div id="cloud-status" style="text-align:center; font-size:.8rem; color:var(--text-soft); margin-bottom:10px">🔄 সংযোগ পরীক্ষা করা হচ্ছে…</div>
+    <div class="brand">
+      <span class="brand-mark">✓</span>
+      <div>
+        <h1>পড়ার খাতা</h1>
+        <p class="brand-sub">Study Ledger</p>
+      </div>
+    </div>
+
+    <form id="login-form" class="login-form">
+      <label>ইউজারনেম
+        <input type="text" id="login-username" autocomplete="username" required />
+      </label>
+      <label>পাসওয়ার্ড
+        <input type="password" id="login-password" autocomplete="current-password" required />
+      </label>
+      <div id="login-error" class="login-error" hidden></div>
+      <button type="submit" class="btn-primary">প্রবেশ করুন</button>
+    </form>
+
+    <div style="text-align:center; margin-top:16px">
+      <button type="button" id="reset-data-btn" class="btn-ghost" style="font-size:.75rem">🔄 ডাটা রিসেট করে আবার চেষ্টা করুন</button>
+
+    </div>
+  </div>
+</div>
+
+<!-- ================= APP SHELL ================= -->
+<div id="app" class="app" hidden>
+  <aside class="sidebar" id="sidebar">
+    <div class="sidebar-top">
+      <span class="brand-mark small">✓</span>
+      <span class="sidebar-title">পড়ার খাতা</span>
+    </div>
+    <nav class="nav" id="nav"></nav>
+    <div class="sidebar-bottom">
+      <div class="me" id="me-box"></div>
+      <button id="logout-btn" class="btn-ghost">লগআউট</button>
+    </div>
+  </aside>
+
+  <main class="main">
+    <header class="topbar">
+      <div class="topbar-menu" id="topbar-menu">
+        <button id="topbar-menu-btn" class="icon-btn" aria-label="মেনু">☰</button>
+        <div id="topbar-menu-panel" class="topbar-menu-panel" hidden></div>
+      </div>
+      <h2 id="page-title">ড্যাশবোর্ড</h2>
+      <div class="topbar-right">
+        <span id="sync-badge" class="sync-badge" title="সিঙ্ক অবস্থা">☁️</span>
+        <button id="install-btn" class="btn-outline" hidden>📲 অ্যাপ ইনস্টল করুন</button>
+        <button id="sound-toggle-btn" class="icon-btn" aria-label="সাউন্ড">🔊</button>
+        <button id="push-toggle-btn" class="icon-btn" aria-label="পুশ নোটিফিকেশন">🔔?</button>
+        <button id="notif-btn" class="icon-btn" aria-label="নোটিফিকেশন">
+          🔔<span id="notif-count" class="badge" hidden>0</span>
+        </button>
+        <button id="mobile-logout-btn" class="icon-btn" aria-label="লগআউট" title="লগআউট">🚪</button>
+      </div>
+    </header>
+
+    <div id="notif-panel" class="notif-panel" hidden></div>
+
+    <section id="view" class="view"></section>
+  </main>
+
+  <nav class="mobile-tabbar" id="mobile-tabbar"></nav>
+</div>
+
+<script type="module" src="firebase-sync.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
