@@ -270,7 +270,8 @@ const state = { role:'student', view:'dashboard', chatWith:null, revisionRange:'
   openForms:{}, stickyStudentClassName:null, subjectManageClass:null,
   adduserSelectedChildIds:[], adduserChildClassFilter:null, adminUserClassFilter:null,
   stickyAdduserRole:null, stickyAdduserClassName:null,
-  studentDashTab:'given', guardianTaskTab:'given',
+  studentDashTab:'given', studentDashRange:'week', studentDashCustomFrom:null, studentDashCustomTo:null,
+  guardianTaskTab:'given', guardianDashRange:'week', guardianDashCustomFrom:null, guardianDashCustomTo:null,
   tutorTaskTab:'missed', tutorTaskRange:'week', tutorTaskCustomFrom:null, tutorTaskCustomTo:null,
   tutorDashTab:'given', tutorDashRange:'week', tutorDashCustomFrom:null, tutorDashCustomTo:null,
   tutorDashClassFilter:'all', tutorDashStudentFilter:null,
@@ -750,9 +751,8 @@ function taskCardHtml(t){
     ${isCompleting ? completionFormHtml(t) : (st!=='done' ? `<div class="task-card-actions">${studentActionButtons(t,st)}</div>` : '')}
   </div>`;
 }
-function studentGivenCardsHtml(userId){
-  const ts = studentTasks(userId);
-  if(!ts.length) return '<div class="empty">এখনো কোনো পড়া দেওয়া হয়নি।</div>';
+function studentGivenCardsHtml(ts){
+  if(!ts.length) return '<div class="empty">এই সময়সীমায় কোনো পড়া নেই।</div>';
   return groupByAssignedDate(ts).map(g=>`
     <div class="section-title" style="margin-top:16px; margin-bottom:8px"><h3 style="font-size:.95rem">${g.label}</h3></div>
     <div class="task-card-grid">${g.items.map(taskCardHtml).join('')}</div>
@@ -760,9 +760,9 @@ function studentGivenCardsHtml(userId){
 }
 /* "এই তারিখে যে যে পড়া নেওয়া হবে" — every task grouped by its শেষ তারিখ/dueDate
    (earliest due date first), so সম্পন্ন/বাকি/মিস — সব একসাথে, তারিখ ধরে দেখা যায় */
-function studentByDueDateCardsHtml(userId){
-  const ts = studentTasks(userId).slice().sort((a,b)=>b.dueDate.localeCompare(a.dueDate)); // newest due date first
-  if(!ts.length) return '<div class="empty">এখনো কোনো পড়া দেওয়া হয়নি।</div>';
+function studentByDueDateCardsHtml(ts){
+  ts = ts.slice().sort((a,b)=>b.dueDate.localeCompare(a.dueDate)); // newest due date first
+  if(!ts.length) return '<div class="empty">এই সময়সীমায় কোনো পড়া নেই।</div>';
   const groups = [];
   ts.forEach(t=>{
     let g = groups.find(g=>g.date===t.dueDate);
@@ -780,11 +780,22 @@ function renderStudentDashboard(user){
   const pending = studentTasks(user.id).filter(t=>effectiveStatus(t)==='pending');
   const missed = studentTasks(user.id).filter(t=>effectiveStatus(t)==='missed');
   const tab = state.studentDashTab==='due' ? 'due' : 'given';
+  const range = state.studentDashRange || 'week';
   const tabs = [
     ['given','📚 শিক্ষকের দেওয়া পড়া'],
     ['due','📅 পড়া আদায়ের শেষ তারিখ অনুযায়ী'],
   ];
-  const tabContent = tab==='due' ? studentByDueDateCardsHtml(user.id) : studentGivenCardsHtml(user.id);
+  const dateField = tab==='due' ? 'dueDate' : 'assignedDate';
+  let scopedTasks = studentTasks(user.id);
+  if(range==='custom'){
+    const from = state.studentDashCustomFrom, to = state.studentDashCustomTo;
+    if(from) scopedTasks = scopedTasks.filter(t => (t[dateField]||t.dueDate) >= from);
+    if(to) scopedTasks = scopedTasks.filter(t => (t[dateField]||t.dueDate) <= to);
+  } else {
+    const minDate = daysAgoISO(DASH_RANGE_DAYS[range] || 7);
+    scopedTasks = scopedTasks.filter(t => (t[dateField]||t.dueDate) >= minDate);
+  }
+  const tabContent = tab==='due' ? studentByDueDateCardsHtml(scopedTasks) : studentGivenCardsHtml(scopedTasks);
   return `
   <div class="grid cols-4">
     <div class="card margin"><h3>মোট পড়া</h3><div class="stat-num">${prog.total}</div><div class="stat-label">এখন পর্যন্ত দেওয়া</div></div>
@@ -797,8 +808,25 @@ function renderStudentDashboard(user){
   ${revisionCheckHtml(user.id)}
   <div class="section-title"><h3>সিলেবাস অগ্রগতি</h3></div>
   <div class="card margin">${syllabusProgressHtml(user.id)}</div>
-  <div class="grid cols-2" style="margin-top:20px; margin-bottom:4px">
+  <div class="grid cols-2" style="margin-top:20px; margin-bottom:12px">
     ${tabs.map(([k,l])=>`<button class="btn-sm ${tab===k?'primary':''}" data-action="set-student-dash-tab" data-id="${k}">${l}</button>`).join('')}
+  </div>
+  <div class="form-grid" style="margin-bottom:14px">
+    <label>সময়কাল
+      <select data-role="student-dash-range">
+        <option value="week" ${range==='week'?'selected':''}>সাপ্তাহিক</option>
+        <option value="fortnight" ${range==='fortnight'?'selected':''}>পাক্ষিক</option>
+        <option value="month" ${range==='month'?'selected':''}>মাসিক</option>
+        <option value="custom" ${range==='custom'?'selected':''}>তারিখ অনুসারে</option>
+      </select>
+    </label>
+    ${range==='custom' ? `
+    <label>শুরুর তারিখ
+      <input type="date" data-role="student-dash-custom-from" value="${state.studentDashCustomFrom||''}" />
+    </label>
+    <label>শেষ তারিখ
+      <input type="date" data-role="student-dash-custom-to" value="${state.studentDashCustomTo||''}" />
+    </label>` : ''}
   </div>
   ${tabContent}
   `;
@@ -1923,16 +1951,43 @@ function renderGuardianChildren(user, focusId){
    browse their child's reading the same two ways. */
 function guardianTaskTabsHtml(studentId){
   const tab = state.guardianTaskTab==='due' ? 'due' : 'given';
+  const range = state.guardianDashRange || 'week';
   const tabs = [
     ['given','📚 শিক্ষকের দেওয়া পড়া'],
     ['due','📅 পড়া আদায়ের শেষ তারিখ অনুযায়ী'],
   ];
   const opts = { actions: (t,st)=> st==='done' ? manageDoneTaskButtonsHtml(t) : '' };
-  const ts = studentTasks(studentId);
+  const dateField = tab==='due' ? 'dueDate' : 'assignedDate';
+  let ts = studentTasks(studentId);
+  if(range==='custom'){
+    const from = state.guardianDashCustomFrom, to = state.guardianDashCustomTo;
+    if(from) ts = ts.filter(t => (t[dateField]||t.dueDate) >= from);
+    if(to) ts = ts.filter(t => (t[dateField]||t.dueDate) <= to);
+  } else {
+    const minDate = daysAgoISO(DASH_RANGE_DAYS[range] || 7);
+    ts = ts.filter(t => (t[dateField]||t.dueDate) >= minDate);
+  }
   const tabContent = tab==='due' ? rowGroupedByDueDateHtml(ts, opts) : rowGroupedByAssignedDateHtml(ts, opts);
   return `
   <div class="grid cols-2" style="margin-bottom:12px">
     ${tabs.map(([k,l])=>`<button class="btn-sm ${tab===k?'primary':''}" data-action="set-guardian-task-tab" data-id="${k}">${l}</button>`).join('')}
+  </div>
+  <div class="form-grid" style="margin-bottom:14px">
+    <label>সময়কাল
+      <select data-role="guardian-dash-range">
+        <option value="week" ${range==='week'?'selected':''}>সাপ্তাহিক</option>
+        <option value="fortnight" ${range==='fortnight'?'selected':''}>পাক্ষিক</option>
+        <option value="month" ${range==='month'?'selected':''}>মাসিক</option>
+        <option value="custom" ${range==='custom'?'selected':''}>তারিখ অনুসারে</option>
+      </select>
+    </label>
+    ${range==='custom' ? `
+    <label>শুরুর তারিখ
+      <input type="date" data-role="guardian-dash-custom-from" value="${state.guardianDashCustomFrom||''}" />
+    </label>
+    <label>শেষ তারিখ
+      <input type="date" data-role="guardian-dash-custom-to" value="${state.guardianDashCustomTo||''}" />
+    </label>` : ''}
   </div>
   ${tabContent}
   `;
@@ -3024,6 +3079,30 @@ document.getElementById('view').addEventListener('change', async (e)=>{
   }
   if(e.target.dataset.role==='admin-dash-student'){
     state.adminDashStudentFilter = e.target.value || null;
+    renderView();
+  }
+  if(e.target.dataset.role==='student-dash-range'){
+    state.studentDashRange = e.target.value;
+    renderView();
+  }
+  if(e.target.dataset.role==='student-dash-custom-from'){
+    state.studentDashCustomFrom = e.target.value || null;
+    renderView();
+  }
+  if(e.target.dataset.role==='student-dash-custom-to'){
+    state.studentDashCustomTo = e.target.value || null;
+    renderView();
+  }
+  if(e.target.dataset.role==='guardian-dash-range'){
+    state.guardianDashRange = e.target.value;
+    renderView();
+  }
+  if(e.target.dataset.role==='guardian-dash-custom-from'){
+    state.guardianDashCustomFrom = e.target.value || null;
+    renderView();
+  }
+  if(e.target.dataset.role==='guardian-dash-custom-to'){
+    state.guardianDashCustomTo = e.target.value || null;
     renderView();
   }
 });
