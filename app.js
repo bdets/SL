@@ -366,10 +366,24 @@ function buildNav(){
 function boot(){
   const user = currentUser();
   if(!user){
+    // nobody logged in on this device right now — stop syncing the
+    // per-user-scoped collections (pk_tasks/pk_notifications/pk_followups);
+    // see firebase-sync.js's setScope/clearScope for why.
+    if(window.CloudSync && window.CloudSync.clearScope) window.CloudSync.clearScope();
     document.getElementById('login-screen').hidden = false;
     document.getElementById('app').hidden = true;
     initLoginScreen();
     return;
+  }
+  // tell the sync layer whose data to actually pull — this is what keeps a
+  // single student's device from downloading every other family's readings
+  // too (see the SCOPABLE_KEYS comment in firebase-sync.js). The scoped
+  // fetch/listener resolves asynchronously; when it lands it fires the same
+  // 'cloud-update' event a remote change would, which already triggers a
+  // re-render below — so the first render here may briefly show nothing for
+  // "সকল পড়া"-style blocks until that arrives, same as switching devices.
+  if(window.CloudSync && window.CloudSync.setScope){
+    window.CloudSync.setScope({ role:user.role, myId:user.id, childIds:user.childIds||[] });
   }
   document.getElementById('login-screen').hidden = true;
   document.getElementById('app').hidden = false;
@@ -697,7 +711,10 @@ function classAggregateTaskListHtml(students){
    newest first — used by all three student-dashboard tabs below */
 function groupByAssignedDate(ts){
   const groups = [];
-  ts.forEach(t=>{
+  // newest assignedDate first — ts arrives in whatever order the caller
+  // built it (often several students interleaved), so this was previously
+  // ungrouped-and-unsorted, which is the sorting bug being fixed here.
+  ts.slice().sort((a,b)=> b.assignedDate.localeCompare(a.assignedDate)).forEach(t=>{
     let g = groups.find(g=>g.date===t.assignedDate);
     if(!g){ g = {date:t.assignedDate, label: fmtDateWithDay(t.assignedDate), items:[]}; groups.push(g); }
     g.items.push(t);

@@ -42,7 +42,7 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/12.18.0/firebase-app.js";
 import {
   getFirestore, doc, setDoc, getDoc,
-  collection, getDocs, onSnapshot, writeBatch
+  collection, getDocs, onSnapshot, writeBatch, query, where, limit
 } from "https://www.gstatic.com/firebasejs/12.18.0/firebase-firestore.js";
 import {
   getAuth, signInAnonymously, onAuthStateChanged
@@ -62,11 +62,32 @@ const RECORD_KEYS = ['pk_users','pk_tasks','pk_messages','pk_notifications','pk_
 // Small, admin-curated, doesn't grow with student count — keep as one whole doc.
 const WHOLE_DOC_KEYS = ['pk_subjects'];
 
+/* SCOPE-AWARE SYNC (added later): pk_tasks / pk_notifications / pk_followups
+   are the three collections that grow with day-to-day USE (one record per
+   reading assigned, per alert, per follow-up note) rather than with account
+   count — at a few hundred active students these are what eventually blow
+   past a browser's localStorage quota (~5-10MB) and, more urgently, past
+   Firestore's free-tier daily read quota (every full-collection read counts
+   a read per document, every time ANY device opens the app).
+   So instead of pulling the WHOLE collection to every device like the other
+   keys, these three are only synced once we know who's logged in, filtered
+   to just that person's own data (student → their own tasks; guardian →
+   their children's; tutor → their own students'; admin → unfiltered, same
+   as before, since admin genuinely needs the overview — a good next step
+   later, not done in this pass). pk_users/pk_routine/pk_payments/pk_messages
+   stay full-sync exactly as before: they're bounded by account count (or,
+   for messages, deferred for now), not by ongoing daily activity, so they
+   were never the actual risk. */
+const SCOPABLE_KEYS = ['pk_tasks','pk_notifications','pk_followups'];
+const ALWAYS_FULL_KEYS = RECORD_KEYS.filter(k => !SCOPABLE_KEYS.includes(k));
+
 window.CloudSync = {
   connected: false,
   needsSeed: false,
   push(){ /* replaced below once db is ready */ },
   markSeeded(){ /* replaced below */ },
+  setScope(){ /* replaced below once db is ready — no-op until then (offline/fallback mode) */ },
+  clearScope(){ /* replaced below */ },
   onReady(cb){ this._cb = this._cb || []; this._cb.push(cb); }
 };
 
@@ -184,7 +205,10 @@ try{
   // an old whole-array blob exists at sync/{key}, copy its records over.
   async function migrateIfNeeded(key){
     try{
-      const existing = await getDocs(collection(db, key));
+      // limit(1) — we only need to know IF a doc exists, not read the whole
+      // collection just to check .empty (that would itself be an expensive
+      // full-collection read on every single app boot, forever).
+      const existing = await getDocs(query(collection(db, key), limit(1)));
       if(!existing.empty) return; // already on the new format (or genuinely empty)
       const oldSnap = await getDoc(doc(db, 'sync', key));
       if(!oldSnap.exists()) return; // nothing to migrate
@@ -200,6 +224,79 @@ try{
     }catch(e){ console.warn('migration check failed for', key, e.message); }
   }
 
+  // Builds the right Firestore query for a scopable key given who's logged
+  // in. Returns null when nobody's logged in yet (nothing to sync). Falls
+  // back to the full collection for admin / unrecognized roles — same
+  // behaviour as before for that case.
+  function scopedQueryFor(key, scope){
+    const col = collection(db, key);
+    if(!scope || !scope.myId) return null;
+    if(key === 'pk_notifications'){
+      return query(col, where('userId','==', scope.myId));
+    }
+    // pk_tasks and pk_followups both carry studentId + tutorId
+    if(scope.role === 'student'){
+      return query(col, where('studentId','==', scope.myId));
+    }
+    if(scope.role === 'tutor'){
+      return query(col, where('tutorId','==', scope.myId));
+    }
+    if(scope.role === 'guardian'){
+      const ids = (scope.childIds||[]).filter(Boolean).slice(0,10); // Firestore 'in' caps the list size; 10 is far beyond any real guardian's child count
+      if(!ids.length) return query(col, where('studentId','==','__none__')); // no children on file — match nothing rather than leaking everyone's data
+      return query(col, where('studentId','in', ids));
+    }
+    return col; // admin / unknown role — unfiltered, same as the old behaviour
+  }
+
+  let scopeUnsubs = [];
+  window.CloudSync.setScope = (scope) => {
+    scopeUnsubs.forEach(u=>{ try{ u(); }catch(e){} });
+    scopeUnsubs = [];
+    if(!scope || !scope.myId) return; // nobody logged in — nothing to sync
+    SCOPABLE_KEYS.forEach(async key => {
+      const q = scopedQueryFor(key, scope);
+      if(!q) return;
+      try{
+        const snap = await getDocs(q);
+        const arr = snap.docs.map(d=>d.data());
+        knownState[key] = new Map(arr.map(rec=>[rec.id, JSON.stringify(rec)]));
+        localStorage.setItem(key, JSON.stringify(arr));
+        window.dispatchEvent(new CustomEvent('cloud-update', { detail:{ key } }));
+      }catch(e){
+        console.warn('scoped fetch failed for', key, e.message);
+        // Query needing a Firestore composite index shows up here the first
+        // time — Firestore's error normally includes a console link to
+        // create it. Surfacing this as a real warning (instead of silently
+        // swallowing it) is exactly what the cloud-push-failed listener in
+        // app.js already does.
+        window.dispatchEvent(new CustomEvent('cloud-push-failed', { detail:{ key, message: e.message, code: e.code||null } }));
+      }
+      const unsub = onSnapshot(q, (snap) => {
+        const map = knownState[key] || new Map();
+        snap.docChanges().forEach(change => {
+          if(change.type === 'removed') map.delete(change.doc.id);
+          else map.set(change.doc.id, JSON.stringify(change.doc.data()));
+        });
+        knownState[key] = map;
+        const arr = Array.from(map.values()).map(j=>JSON.parse(j));
+        const serialized = JSON.stringify(arr);
+        if(serialized !== localStorage.getItem(key)){
+          localStorage.setItem(key, serialized);
+          window.dispatchEvent(new CustomEvent('cloud-update', { detail:{ key } }));
+        }
+      }, (err)=>{
+        console.warn('onSnapshot error', key, err.message);
+        window.dispatchEvent(new CustomEvent('cloud-push-failed', { detail:{ key, message: err.message, code: err.code||null } }));
+      });
+      scopeUnsubs.push(unsub);
+    });
+  };
+  window.CloudSync.clearScope = () => {
+    scopeUnsubs.forEach(u=>{ try{ u(); }catch(e){} });
+    scopeUnsubs = [];
+  };
+
   signInAnonymously(auth).catch(e => { console.warn('anonymous sign-in failed:', e.message); fallbackIfNeeded(); });
 
   onAuthStateChanged(auth, async (user) => {
@@ -212,7 +309,9 @@ try{
 
       // Pull whatever already exists in the cloud into localStorage BEFORE the app boots,
       // so the very first render already shows the shared family data (not stale local demo data).
-      await Promise.all(RECORD_KEYS.map(async key => {
+      // Only the ALWAYS_FULL keys — the scopable ones (pk_tasks/pk_notifications/pk_followups)
+      // wait for app.js to tell us who's logged in via setScope(), see above.
+      await Promise.all(ALWAYS_FULL_KEYS.map(async key => {
         const snap = await getDocs(collection(db, key));
         const arr = snap.docs.map(d=>d.data());
         knownState[key] = new Map(arr.map(rec=>[rec.id, JSON.stringify(rec)]));
@@ -223,8 +322,9 @@ try{
         if(snap.exists()) localStorage.setItem(key, snap.data().data);
       }));
 
-      // Live updates from other devices, from this point on.
-      RECORD_KEYS.forEach(key => {
+      // Live updates from other devices, from this point on (ALWAYS_FULL keys only —
+      // scoped keys get their own listener inside setScope() once someone's logged in).
+      ALWAYS_FULL_KEYS.forEach(key => {
         onSnapshot(collection(db, key), (snap) => {
           const map = knownState[key] || new Map();
           snap.docChanges().forEach(change => {
