@@ -2,96 +2,195 @@
 <html lang="bn">
 <head>
 <meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-<title>পড়ার খাতা — Study Ledger</title>
-<meta name="theme-color" content="#1F3A5F" />
-<link rel="manifest" href="manifest.json" />
-<link rel="icon" href="icons/icon-192.png" />
-<link rel="apple-touch-icon" href="icons/icon-192.png" />
-<meta name="mobile-web-app-capable" content="yes" />
-<meta name="apple-mobile-web-app-capable" content="yes" />
-<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>অ্যাপবাজার — আপনার প্রতিষ্ঠানের জন্য তৈরি ওয়েব অ্যাপ</title>
+<meta name="description" content="স্থানীয় ব্যবসা, কোচিং সেন্টার ও প্রতিষ্ঠানের জন্য তৈরি, ব্যবহার-বান্ধব ও সাশ্রয়ী ওয়েব অ্যাপ — লাইভ ডেমো দেখুন, সরাসরি কিনুন।" />
+<link rel="icon" href="assets/icons/favicon.svg" type="image/svg+xml">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Bengali:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css" />
+<link href="https://fonts.googleapis.com/css2?family=Baloo+Da+2:wght@500;600;700;800&family=Hind+Siliguri:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/style.css">
 </head>
-<body>
+<body data-page="home">
 
-<div id="toast-zone" class="toast-zone" aria-live="polite"></div>
+<header class="site-header">
+  <div class="container">
+    <a href="index.html" class="brand"><span class="brand-mark">🛍️</span> <span data-site-name>অ্যাপবাজার</span></a>
+    <nav class="main-nav">
+      <a href="index.html" data-page="home">হোম</a>
+      <a href="apps.html" data-page="apps">সব অ্যাপ</a>
+      <a href="index.html#about" data-page="about">সম্পর্কে</a>
+      <a href="index.html#contact" data-page="contact">যোগাযোগ</a>
+      <a class="btn btn-primary btn-sm nav-cta" href="apps.html">অ্যাপ দেখুন</a>
+    </nav>
+    <button class="nav-toggle" aria-label="মেনু">☰</button>
+  </div>
+</header>
 
-<!-- ================= LOGIN SCREEN ================= -->
-<div id="login-screen" class="login-screen">
-  <div class="login-card">
-    <div id="cloud-status" style="text-align:center; font-size:.8rem; color:var(--text-soft); margin-bottom:10px">🔄 সংযোগ পরীক্ষা করা হচ্ছে…</div>
-    <div class="brand">
-      <span class="brand-mark">✓</span>
-      <div>
-        <h1>পড়ার খাতা</h1>
-        <p class="brand-sub">Study Ledger</p>
+<section class="hero">
+  <div class="blob-field">
+    <svg class="blob" width="420" height="420" style="top:-120px; right:-100px" viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg">
+      <path fill="#FFE3EC" d="M45.4,-58.4C58.4,-49.6,68.2,-34.7,71.9,-18.2C75.7,-1.7,73.4,16.4,65.1,31.2C56.9,46,42.6,57.5,26.5,64.2C10.4,70.9,-7.5,72.7,-24.3,68.1C-41,63.4,-56.7,52.2,-65.6,36.9C-74.6,21.6,-76.8,2.1,-72.6,-15.1C-68.5,-32.3,-58,-47.3,-44.3,-56.1C-30.6,-64.9,-15.3,-67.6,1.2,-69.2C17.7,-70.9,35.4,-71.4,45.4,-58.4Z" transform="translate(100 100)" />
+    </svg>
+    <svg class="blob" width="300" height="300" style="bottom:-80px; left:-90px" viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg">
+      <path fill="#FFF1D2" d="M39.5,-51.9C50.8,-44.5,59.4,-32.5,63.6,-18.7C67.9,-4.9,67.8,10.7,62.1,23.9C56.5,37.1,45.3,47.9,32.2,55.4C19.2,62.9,4.3,67,-10.9,66.8C-26.1,66.6,-41.7,62.1,-52.8,52.1C-64,42.1,-70.7,26.6,-72.1,10.4C-73.5,-5.8,-69.6,-22.7,-60.1,-35.6C-50.6,-48.5,-35.5,-57.4,-20.4,-63.4C-5.3,-69.4,9.9,-72.6,23.7,-68.9C37.5,-65.2,49.9,-54.6,39.5,-51.9Z" transform="translate(100 100)" />
+    </svg>
+  </div>
+  <div class="container">
+    <div>
+      <span class="hero-eyebrow"><span class="dot">🚀</span> নতুন অ্যাপ প্রতি মাসে যোগ হচ্ছে</span>
+      <h1>আপনার প্রতিষ্ঠানের জন্য<br><span class="accent">রেডিমেড</span> ওয়েব অ্যাপ</h1>
+      <p class="hero-sub">কোচিং সেন্টার থেকে ছোট দোকান — যাদের দিনের কাজ এখনো খাতা-কলমে বা এলোমেলো এক্সেল শিটে চলছে, তাদের জন্য সহজ, বাংলায় তৈরি ওয়েব অ্যাপ। লাইভ ডেমো দেখুন, পছন্দ হলে সরাসরি কিনুন।</p>
+      <div class="hero-ctas">
+        <a class="btn btn-primary" href="apps.html">সব অ্যাপ দেখুন</a>
+        <a class="btn btn-outline" href="index.html#contact">নিজের প্রয়োজন বলুন</a>
+      </div>
+      <div class="hero-stats">
+        <div class="hero-stat"><b>১+</b><span>লাইভ অ্যাপ</span></div>
+        <div class="hero-stat"><b>১০০%</b><span>বাংলায় তৈরি</span></div>
+        <div class="hero-stat"><b>মোবাইল-ফার্স্ট</b><span>যেকোনো ডিভাইসে</span></div>
       </div>
     </div>
-
-    <form id="login-form" class="login-form">
-      <label>ইউজারনেম
-        <input type="text" id="login-username" autocomplete="username" required />
-      </label>
-      <label>পাসওয়ার্ড
-        <input type="password" id="login-password" autocomplete="current-password" required />
-      </label>
-      <div id="login-error" class="login-error" hidden></div>
-      <button type="submit" class="btn-primary">প্রবেশ করুন</button>
-    </form>
-
-    <div style="text-align:center; margin-top:16px">
-      <button type="button" id="reset-data-btn" class="btn-ghost" style="font-size:.75rem">🔄 ডাটা রিসেট করে আবার চেষ্টা করুন</button>
-
+    <div class="hero-visual">
+      <div class="float-chip c1">✅ পেমেন্ট আদায় হয়েছে</div>
+      <div class="float-chip c2">🔔 নতুন বার্তা</div>
+      <div class="phone-mock">
+        <div class="phone-notch"></div>
+        <div class="phone-screen">
+          <div class="ps-bar"></div>
+          <div class="ps-body">
+            <div class="ps-card"><b>আজকের পড়া</b><div class="ps-line"></div><div class="ps-line short"></div></div>
+            <div class="ps-card"><b>এই মাসের পেমেন্ট</b><div class="ps-line"></div></div>
+            <div class="ps-card"><b>রুটিন</b><div class="ps-line short"></div></div>
+          </div>
+        </div>
+      </div>
     </div>
   </div>
-</div>
+</section>
 
-<!-- ================= APP SHELL ================= -->
-<div id="app" class="app" hidden>
-  <aside class="sidebar" id="sidebar">
-    <div class="sidebar-top">
-      <span class="brand-mark small">✓</span>
-      <span class="sidebar-title">পড়ার খাতা</span>
+<section id="apps">
+  <div class="container">
+    <div class="section-head">
+      <span class="kicker">ফিচারড</span>
+      <h2>সবচেয়ে জনপ্রিয় অ্যাপগুলো</h2>
+      <p>প্রতিটা অ্যাপের নিজস্ব লাইভ ডেমো আছে — কেনার আগেই হাতে-কলমে চালিয়ে দেখুন।</p>
     </div>
-    <nav class="nav" id="nav"></nav>
-    <div class="sidebar-bottom">
-      <div class="me" id="me-box"></div>
-      <button id="logout-btn" class="btn-ghost">লগআউট</button>
+    <div class="carousel" id="featured-carousel">
+      <button class="carousel-arrow prev" id="featured-prev" aria-label="আগের অ্যাপ">‹</button>
+      <div class="carousel-track" id="featured-apps-track"></div>
+      <button class="carousel-arrow next" id="featured-next" aria-label="পরের অ্যাপ">›</button>
     </div>
-  </aside>
+    <div class="carousel-dots" id="featured-dots"></div>
+    <div style="text-align:center; margin-top:26px">
+      <a class="btn btn-outline" href="apps.html">সব অ্যাপ এক পাতায় দেখুন →</a>
+    </div>
+  </div>
+</section>
 
-  <main class="main">
-    <header class="topbar">
-      <div class="topbar-menu" id="topbar-menu">
-        <button id="topbar-menu-btn" class="icon-btn" aria-label="মেনু">☰</button>
-        <div id="topbar-menu-panel" class="topbar-menu-panel" hidden></div>
+<section id="about" style="background:var(--bg-alt)">
+  <div class="container">
+    <div class="section-head center">
+      <span class="kicker">কেন এখান থেকে নেবেন</span>
+      <h2>রেডিমেড টেমপ্লেট না, বাস্তব দরকার বুঝে তৈরি</h2>
+      <p>প্রতিটা অ্যাপ সত্যিকারের ব্যবহারকারীর চাহিদা থেকে তৈরি — আর প্রয়োজনে আপনার নিজস্ব ব্যবহার অনুযায়ী বদলে দেওয়া যায়।</p>
+    </div>
+    <div class="value-grid">
+      <div class="value-card">
+        <div class="value-icon">⚡</div>
+        <h3>দ্রুত শুরু</h3>
+        <p>কেনার সাথে সাথেই ব্যবহার শুরু করা যায় — জটিল সেটআপ বা প্রশিক্ষণ লাগে না।</p>
       </div>
-      <h2 id="page-title">ড্যাশবোর্ড</h2>
-      <div class="topbar-right">
-        <span id="sync-badge" class="sync-badge" title="সিঙ্ক অবস্থা">☁️</span>
-        <button id="install-btn" class="btn-outline" hidden>📲 অ্যাপ ইনস্টল করুন</button>
-        <button id="sound-toggle-btn" class="icon-btn" aria-label="সাউন্ড">🔊</button>
-        <button id="push-toggle-btn" class="icon-btn" aria-label="পুশ নোটিফিকেশন">🔔?</button>
-        <button id="notif-btn" class="icon-btn" aria-label="নোটিফিকেশন">
-          🔔<span id="notif-count" class="badge" hidden>0</span>
-        </button>
-        <button id="mobile-logout-btn" class="icon-btn" aria-label="লগআউট" title="লগআউট">🚪</button>
+      <div class="value-card">
+        <div class="value-icon">🇧🇩</div>
+        <h3>বাংলায় তৈরি</h3>
+        <p>প্রতিটা অ্যাপ শুরু থেকেই বাংলা ভাষা ও স্থানীয় প্রেক্ষাপট মাথায় রেখে বানানো।</p>
       </div>
-    </header>
+      <div class="value-card">
+        <div class="value-icon">🛠️</div>
+        <h3>কাস্টমাইজ করা যায়</h3>
+        <p>আপনার প্রতিষ্ঠানের নাম, রং, নির্দিষ্ট ফিচার — প্রয়োজনমতো বদলে দেওয়া হয়।</p>
+      </div>
+      <div class="value-card">
+        <div class="value-icon">🤝</div>
+        <h3>সরাসরি সহায়তা</h3>
+        <p>কেনার পরও সমস্যা হলে সরাসরি হোয়াটসঅ্যাপে যোগাযোগ করে সমাধান পাবেন।</p>
+      </div>
+    </div>
+  </div>
+</section>
 
-    <div id="notif-panel" class="notif-panel" hidden></div>
+<section>
+  <div class="container">
+    <div class="cta-band">
+      <div>
+        <h2>নিজের প্রতিষ্ঠানের জন্য আলাদা কিছু দরকার?</h2>
+        <p>এখানে যা আছে তার বাইরেও কিছু চাইলে, বলুন কী দরকার — বানিয়ে দেওয়ার চেষ্টা করব।</p>
+      </div>
+      <a class="btn btn-primary" href="index.html#contact">যোগাযোগ করুন</a>
+    </div>
+  </div>
+</section>
 
-    <section id="view" class="view"></section>
-  </main>
+<section id="contact">
+  <div class="container">
+    <div class="section-head center">
+      <span class="kicker">যোগাযোগ</span>
+      <h2>প্রশ্ন আছে? সরাসরি বলুন</h2>
+      <p>অ্যাপ সম্পর্কে জানতে, ডেমো দেখতে চাইলে বা নিজের প্রয়োজন জানাতে যেকোনো মাধ্যমে যোগাযোগ করুন।</p>
+    </div>
+    <div class="value-grid" style="grid-template-columns:repeat(3,1fr)">
+      <a class="value-card" data-whatsapp-link href="#" target="_blank" rel="noopener">
+        <div class="value-icon">💬</div>
+        <h3>WhatsApp</h3>
+        <p>সবচেয়ে দ্রুত উত্তর পেতে সরাসরি মেসেজ করুন।</p>
+      </a>
+      <a class="value-card" data-email href="#">
+        <div class="value-icon">✉️</div>
+        <h3>ইমেইল</h3>
+        <p>বিস্তারিত প্রয়োজন লিখে জানাতে চাইলে ইমেইল করুন।</p>
+      </a>
+      <a class="value-card" href="apps.html">
+        <div class="value-icon">📱</div>
+        <h3>সব অ্যাপ দেখুন</h3>
+        <p>আগে দেখে নিন কী কী আছে, তারপর সিদ্ধান্ত নিন।</p>
+      </a>
+    </div>
+  </div>
+</section>
 
-  <nav class="mobile-tabbar" id="mobile-tabbar"></nav>
-</div>
+<footer class="site-footer">
+  <div class="container">
+    <div class="footer-grid">
+      <div>
+        <a href="index.html" class="brand"><span class="brand-mark">🛍️</span> <span data-site-name>অ্যাপবাজার</span></a>
+        <p style="margin-top:14px; max-width:34ch">স্থানীয় ব্যবসা ও প্রতিষ্ঠানের জন্য তৈরি, সাশ্রয়ী ও ব্যবহার-বান্ধব ওয়েব অ্যাপ।</p>
+        <div class="social-row">
+          <a href="#" aria-label="Facebook">f</a>
+          <a href="#" aria-label="YouTube">▶</a>
+        </div>
+      </div>
+      <div class="footer-col">
+        <h4>পেজ</h4>
+        <a href="index.html">হোম</a>
+        <a href="apps.html">সব অ্যাপ</a>
+        <a href="index.html#about">সম্পর্কে</a>
+        <a href="index.html#contact">যোগাযোগ</a>
+      </div>
+      <div class="footer-col">
+        <h4>যোগাযোগ</h4>
+        <a data-whatsapp-link href="#" target="_blank" rel="noopener">💬 WhatsApp</a>
+        <a data-email href="#">✉️ ইমেইল</a>
+      </div>
+    </div>
+    <div class="footer-bottom">
+      <span>© <span data-year></span> <span data-owner-name>অ্যাপবাজার</span> — সর্বস্বত্ব সংরক্ষিত</span>
+      <span>বানানো হয়েছে ❤️ দিয়ে</span>
+    </div>
+  </div>
+</footer>
 
-<script type="module" src="firebase-sync.js"></script>
-<script src="app.js"></script>
+<script src="js/products.js"></script>
+<script src="js/main.js"></script>
 </body>
 </html>
