@@ -88,6 +88,7 @@ window.CloudSync = {
   markSeeded(){ /* replaced below */ },
   setScope(){ /* replaced below once db is ready — no-op until then (offline/fallback mode) */ },
   clearScope(){ /* replaced below */ },
+  fetchTaskRange(){ return Promise.resolve([]); /* replaced below */ },
   onReady(cb){ this._cb = this._cb || []; this._cb.push(cb); }
 };
 
@@ -228,26 +229,38 @@ try{
   // in. Returns null when nobody's logged in yet (nothing to sync). Falls
   // back to the full collection for admin / unrecognized roles — same
   // behaviour as before for that case.
-  function scopedQueryFor(key, scope){
+  //
+  // dateField/minISO (pk_tasks only, for now): bounds the LIVE synced copy
+  // to a rolling recent window (default 7 days, by dueDate) instead of
+  // that person's entire history forever — this is "ফেজ ২ ধাপ ১". Combined
+  // with an equality filter this needs a Firestore composite index; the
+  // first real use will fail once with a `failed-precondition` error whose
+  // message contains a console link to auto-create it — that's expected,
+  // not a bug (see README for the exact field combinations needed).
+  function scopedQueryFor(key, scope, dateField, minISO){
     const col = collection(db, key);
     if(!scope || !scope.myId) return null;
+    let q;
     if(key === 'pk_notifications'){
-      return query(col, where('userId','==', scope.myId));
-    }
-    // pk_tasks and pk_followups both carry studentId + tutorId
-    if(scope.role === 'student'){
-      return query(col, where('studentId','==', scope.myId));
-    }
-    if(scope.role === 'tutor'){
-      return query(col, where('tutorId','==', scope.myId));
-    }
-    if(scope.role === 'guardian'){
+      q = query(col, where('userId','==', scope.myId));
+    } else if(scope.role === 'student'){
+      // pk_tasks and pk_followups both carry studentId + tutorId
+      q = query(col, where('studentId','==', scope.myId));
+    } else if(scope.role === 'tutor'){
+      q = query(col, where('tutorId','==', scope.myId));
+    } else if(scope.role === 'guardian'){
       const ids = (scope.childIds||[]).filter(Boolean).slice(0,10); // Firestore 'in' caps the list size; 10 is far beyond any real guardian's child count
       if(!ids.length) return query(col, where('studentId','==','__none__')); // no children on file — match nothing rather than leaking everyone's data
-      return query(col, where('studentId','in', ids));
+      q = query(col, where('studentId','in', ids));
+    } else {
+      q = col; // admin / unknown role — unfiltered by person, same as the old behaviour
     }
-    return col; // admin / unknown role — unfiltered, same as the old behaviour
+    if(dateField && minISO) q = query(q, where(dateField, '>=', minISO));
+    return q;
   }
+
+  const ROLLING_WINDOW_DAYS = 7;
+  function daysAgoISO(n){ const dt = new Date(); dt.setDate(dt.getDate()-n); return dt.toISOString().slice(0,10); }
 
   let scopeUnsubs = [];
   window.CloudSync.setScope = (scope) => {
@@ -255,7 +268,20 @@ try{
     scopeUnsubs = [];
     if(!scope || !scope.myId) return; // nobody logged in — nothing to sync
     SCOPABLE_KEYS.forEach(async key => {
-      const q = scopedQueryFor(key, scope);
+      // pk_tasks only, for now: bound the always-live copy to tasks whose
+      // dueDate hasn't expired more than ROLLING_WINDOW_DAYS days ago.
+      // Deliberately dueDate, not assignedDate: a future/near-term dueDate
+      // is always >= a past cutoff regardless of when it was assigned, so
+      // this alone correctly keeps both "দেওয়া" (given, by assignedDate) and
+      // "মিস/বাকি" (by dueDate) relevant — only tasks whose deadline is
+      // genuinely stale (>7 days past) drop out of the live window. A
+      // completed task rides along on the same dueDate rule; completedDate
+      // itself isn't used for windowing (confirmed not needed).
+      // pk_notifications/pk_followups stay as Phase-1 (role-scoped, full
+      // history) — see the README note on why those were deprioritized.
+      const dateField = key === 'pk_tasks' ? 'dueDate' : null;
+      const minISO = dateField ? daysAgoISO(ROLLING_WINDOW_DAYS) : null;
+      const q = scopedQueryFor(key, scope, dateField, minISO);
       if(!q) return;
       try{
         const snap = await getDocs(q);
@@ -295,6 +321,26 @@ try{
   window.CloudSync.clearScope = () => {
     scopeUnsubs.forEach(u=>{ try{ u(); }catch(e){} });
     scopeUnsubs = [];
+  };
+
+  // On-demand, ONE-TIME fetch (no live listener — this is intentionally not
+  // kept in sync afterwards) for a wider pk_tasks range than the rolling
+  // window above, e.g. when someone picks পাক্ষিক/মাসিক/তারিখ অনুসারে in the
+  // UI. scope: { role, myId, childIds, studentId? } — pass studentId to
+  // narrow to one specific student regardless of role (used by the
+  // class/student filter dropdowns already in the UI).
+  window.CloudSync.fetchTaskRange = async (scope, dateField, fromISO, toISO) => {
+    if(!scope || !scope.myId) return [];
+    let narrowedScope = scope;
+    if(scope.studentId){
+      narrowedScope = { role:'student', myId: scope.studentId }; // reuse the student-shaped branch above regardless of who's actually asking
+    }
+    let q = scopedQueryFor('pk_tasks', narrowedScope);
+    if(!q) return [];
+    if(fromISO) q = query(q, where(dateField, '>=', fromISO));
+    if(toISO) q = query(q, where(dateField, '<=', toISO));
+    const snap = await getDocs(q);
+    return snap.docs.map(d=>d.data());
   };
 
   signInAnonymously(auth).catch(e => { console.warn('anonymous sign-in failed:', e.message); fallbackIfNeeded(); });
