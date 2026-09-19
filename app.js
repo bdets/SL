@@ -276,8 +276,7 @@ const state = { role:'student', view:'dashboard', chatWith:null, revisionRange:'
   tutorDashTab:'given', tutorDashRange:'week', tutorDashCustomFrom:null, tutorDashCustomTo:null,
   tutorDashClassFilter:'all', tutorDashStudentFilter:null,
   adminDashTab:'given', adminDashRange:'week', adminDashCustomFrom:null, adminDashCustomTo:null,
-  adminDashClassFilter:'all', adminDashStudentFilter:null,
-  taskRangeCache:{} };
+  adminDashClassFilter:'all', adminDashStudentFilter:null };
 let lastRenderedView = null;
 
 function currentUser(){
@@ -1532,117 +1531,50 @@ function renderTutorStudents(user){
   `;
 }
 
-/* Phase-2, step 1 (pilot surface): the always-live local pk_tasks cache is
-   now bounded to a rolling ~7-day window by dueDate (see firebase-sync.js).
-   When someone picks a wider range (পাক্ষিক/মাসিক/তারিখ অনুসারে) here, that
-   data usually isn't in localStorage at all — this fetches it once (not a
-   live subscription) and keeps it in an in-memory-only cache for this
-   session. Deliberately NOT merged into the real tasks()/localStorage array
-   the edit/delete/complete buttons operate on — records that only exist in
-   this wider-range cache are shown read-only (no action buttons), since
-   they're outside the actively-synced set. cacheKey should uniquely
-   identify the query (role/student/date range); scope is the same shape
-   fetchTaskRange expects ({role, myId, childIds?, studentId?}). */
-async function ensureWiderTaskRange(cacheKey, scope, fromISO, toISO){
-  if(state.taskRangeCache[cacheKey]) return state.taskRangeCache[cacheKey];
-  if(!window.CloudSync || !window.CloudSync.fetchTaskRange) return null;
-  try{
-    const data = await window.CloudSync.fetchTaskRange(scope, 'dueDate', fromISO||null, toISO||null);
-    state.taskRangeCache[cacheKey] = data;
-    return data;
-  }catch(e){
-    toast('⚠️ পুরনো রেঞ্জের ডাটা আনতে সমস্যা হয়েছে — ইন্টারনেট চেক করুন।', 'warn');
-    return null;
-  }
-}
-/* Range → {from,to} ISO bounds, or null bounds for 'week' (already covered
-   by the live rolling window, so no fetch needed — the fast/common path). */
-function rangeToBounds(range, customFrom, customTo){
-  if(range==='custom') return { from: customFrom||null, to: customTo||null };
-  if(range==='week' || !range) return null; // covered by the live rolling window already
-  return { from: daysAgoISO(DASH_RANGE_DAYS[range] || 7), to: null };
-}
-/* Marks which of a task list's items are only visible via the wider-range
-   cache (i.e. not in the live-synced tasks()) — those get no management
-   buttons, since editing/deleting them wouldn't reflect back into tasks(). */
-function markOutOfWindow(list){
-  const liveIds = new Set(tasks().map(t=>t.id));
-  return list.map(t => liveIds.has(t.id) ? t : { ...t, __readOnly:true });
-}
-/* Pilot wiring for the tutor's "আমার স্টুডেন্ট" মিস/সম্পন্ন filter — kicks off
-   (and caches) the wider-range fetch when needed. See ensureWiderTaskRange. */
-async function triggerTutorTaskRangeFetch(){
-  const range = state.tutorTaskRange || 'week';
-  if(range==='week') return; // covered by the live rolling window already
-  const user = currentUser();
-  if(!user) return;
-  const bounds = rangeToBounds(range, state.tutorTaskCustomFrom, state.tutorTaskCustomTo);
-  const activeStudentId = state.tutorStudentFilter;
-  const scope = { role:'tutor', myId:user.id, studentId: activeStudentId || undefined };
-  const cacheKey = `tutor-filter:${activeStudentId||'all'}:${JSON.stringify(bounds)}`;
-  await ensureWiderTaskRange(cacheKey, scope, bounds && bounds.from, bounds && bounds.to);
-}
-
 /* "মিস হওয়া পড়া" (pending/missed) vs "সম্পন্ন হওয়া পড়া" (completed) as two
    separate tabs, each filterable by সাপ্তাহিক (last 7 days) / মাসিক (last 30
    days) / তারিখ অনুসারে (a custom from–to date range) — used inside the
    tutor's "আমার স্টুডেন্ট" → class/student filter section. */
-const TUTOR_TASK_RANGE_DAYS = { week:7, fortnight:15, month:30 };
+const TUTOR_TASK_RANGE_DAYS = { week:7, month:30 };
 function tutorTaskFilterTabsHtml(activeStudentId, visibleStudents){
   const tab = state.tutorTaskTab==='done' ? 'done' : 'missed';
   const range = state.tutorTaskRange || 'week';
   const dateField = tab==='done' ? 'completedDate' : 'dueDate';
 
-  let pool = null;
-  let loading = false;
-  if(range==='week'){
-    // fast path — already covered by the live rolling window, no fetch needed
-    pool = activeStudentId
-      ? studentTasks(activeStudentId)
-      : dedupeCommonTasks(tasks().filter(t=>visibleStudents.some(s=>s.id===t.studentId)));
-  } else {
-    const bounds = rangeToBounds(range, state.tutorTaskCustomFrom, state.tutorTaskCustomTo);
-    const cacheKey = `tutor-filter:${activeStudentId||'all'}:${JSON.stringify(bounds)}`;
-    const cached = state.taskRangeCache[cacheKey];
-    if(!cached){
-      loading = true; // the change-handler already kicked off the fetch; it'll re-render when ready
-    } else {
-      const marked = markOutOfWindow(cached);
-      pool = activeStudentId
-        ? marked.filter(t=>t.studentId===activeStudentId)
-        : dedupeCommonTasks(marked.filter(t=>visibleStudents.some(s=>s.id===t.studentId)));
-    }
+  const pool = activeStudentId
+    ? studentTasks(activeStudentId)
+    : dedupeCommonTasks(tasks().filter(t=>visibleStudents.some(s=>s.id===t.studentId)));
+
+  let filtered = pool.filter(t => tab==='done' ? effectiveStatus(t)==='done' : effectiveStatus(t)!=='done');
+
+  if(range==='week' || range==='month'){
+    const minDate = daysAgoISO(TUTOR_TASK_RANGE_DAYS[range]);
+    filtered = filtered.filter(t => (t[dateField] || t.dueDate) >= minDate);
+  } else if(range==='custom'){
+    const from = state.tutorTaskCustomFrom, to = state.tutorTaskCustomTo;
+    if(from) filtered = filtered.filter(t => (t[dateField] || t.dueDate) >= from);
+    if(to) filtered = filtered.filter(t => (t[dateField] || t.dueDate) <= to);
   }
 
-  let listHtml;
-  if(loading){
-    listHtml = `<div class="empty">লোড হচ্ছে…</div>`;
-  } else {
-    let filtered = pool.filter(t => tab==='done' ? effectiveStatus(t)==='done' : effectiveStatus(t)!=='done');
-    // no extra local date-filter needed here anymore — `pool` is already
-    // scoped to the right dueDate range, either by the live rolling window
-    // ('week') or by the fetch in the branch above (fortnight/month/custom).
+  const groups = [];
+  filtered.slice()
+    .sort((a,b)=> tab==='done' ? (b.completedDate||'').localeCompare(a.completedDate||'') : a.dueDate.localeCompare(b.dueDate))
+    .forEach(t=>{
+      const dv = t[dateField] || t.dueDate;
+      let g = groups.find(g=>g.dueDate===dv);
+      if(!g){ g = {label: relativeDateLabel(dv), dueDate: dv, items:[]}; groups.push(g); }
+      g.items.push(t);
+    });
 
-    const groups = [];
-    filtered.slice()
-      .sort((a,b)=> tab==='done' ? (b.completedDate||'').localeCompare(a.completedDate||'') : a.dueDate.localeCompare(b.dueDate))
-      .forEach(t=>{
-        const dv = t[dateField] || t.dueDate;
-        let g = groups.find(g=>g.dueDate===dv);
-        if(!g){ g = {label: relativeDateLabel(dv), dueDate: dv, items:[]}; groups.push(g); }
-        g.items.push(t);
-      });
+  const rowActions = tab==='done'
+    ? (t)=> t.__count>1 ? '' : (tutorTaskActionButtons(t) + manageDoneTaskButtonsHtml(t))
+    : (t)=> t.__count>1 ? '' : tutorTaskActionButtons(t);
 
-    const rowActions = tab==='done'
-      ? (t)=> (t.__count>1 || t.__readOnly) ? '' : (tutorTaskActionButtons(t) + manageDoneTaskButtonsHtml(t))
-      : (t)=> (t.__count>1 || t.__readOnly) ? '' : tutorTaskActionButtons(t);
-
-    listHtml = groups.length ? groups.map(g=>`
-        <div class="section-title" style="margin-top:14px; margin-bottom:6px"><h3 style="font-size:.95rem">${g.label}</h3></div>
-        ${g.items.map(t=>taskRowHtml(t,{actions:rowActions})).join('')}
-      `).join('')
-      : `<div class="empty">${tab==='done' ? 'এই সময়সীমায় কোনো পড়া সম্পন্ন হয়নি।' : 'এই সময়সীমায় কোনো বাকি/মিস হওয়া পড়া নেই।'}</div>`;
-  }
+  const listHtml = groups.length ? groups.map(g=>`
+      <div class="section-title" style="margin-top:14px; margin-bottom:6px"><h3 style="font-size:.95rem">${g.label}</h3></div>
+      ${g.items.map(t=>taskRowHtml(t,{actions:rowActions})).join('')}
+    `).join('')
+    : `<div class="empty">${tab==='done' ? 'এই সময়সীমায় কোনো পড়া সম্পন্ন হয়নি।' : 'এই সময়সীমায় কোনো বাকি/মিস হওয়া পড়া নেই।'}</div>`;
 
   return `
     <div class="grid cols-2" style="margin-bottom:12px">
@@ -1653,7 +1585,6 @@ function tutorTaskFilterTabsHtml(activeStudentId, visibleStudents){
       <label>সময়কাল
         <select data-role="tutor-task-range">
           <option value="week" ${range==='week'?'selected':''}>সাপ্তাহিক</option>
-          <option value="fortnight" ${range==='fortnight'?'selected':''}>পাক্ষিক</option>
           <option value="month" ${range==='month'?'selected':''}>মাসিক</option>
           <option value="custom" ${range==='custom'?'selected':''}>তারিখ অনুসারে</option>
         </select>
@@ -3096,13 +3027,9 @@ document.getElementById('view').addEventListener('change', async (e)=>{
     state.tutorClassFilter = e.target.value;
     state.tutorStudentFilter = null;
     renderView();
-    await triggerTutorTaskRangeFetch();
-    renderView();
   }
   if(e.target.dataset.role==='student-filter-student'){
     state.tutorStudentFilter = e.target.value || null;
-    renderView();
-    await triggerTutorTaskRangeFetch();
     renderView();
   }
   if(e.target.dataset.role==='revision-picker-class'){
@@ -3119,20 +3046,14 @@ document.getElementById('view').addEventListener('change', async (e)=>{
   }
   if(e.target.dataset.role==='tutor-task-range'){
     state.tutorTaskRange = e.target.value;
-    renderView(); // shows "লোড হচ্ছে…" immediately if this range needs a fetch
-    await triggerTutorTaskRangeFetch();
     renderView();
   }
   if(e.target.dataset.role==='tutor-task-custom-from'){
     state.tutorTaskCustomFrom = e.target.value || null;
     renderView();
-    await triggerTutorTaskRangeFetch();
-    renderView();
   }
   if(e.target.dataset.role==='tutor-task-custom-to'){
     state.tutorTaskCustomTo = e.target.value || null;
-    renderView();
-    await triggerTutorTaskRangeFetch();
     renderView();
   }
   if(e.target.dataset.role==='admin-dash-range'){
