@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="bn">
+<head>
+<meta charset="UTF-8" />
+<title>পড়ার খাতা — ডাটা যাচাই (শুধু পড়ে, কিছু বদলায় না)</title>
+<style>
+  body{ font-family:system-ui,-apple-system,sans-serif; max-width:760px; margin:30px auto; padding:0 16px; background:#F5F7FB; color:#16213E; }
+  h1{ font-size:1.3rem; }
+  .warn{ background:#FFF3CD; border:1px solid #E9C25E; padding:12px 16px; border-radius:8px; margin-bottom:20px; font-size:.92rem; }
+  button{ background:#4338CA; color:#fff; border:none; padding:10px 22px; border-radius:8px; font-size:1rem; cursor:pointer; }
+  button:disabled{ opacity:.5; cursor:default; }
+  #out{ margin-top:20px; white-space:pre-wrap; font-family:ui-monospace,monospace; font-size:.88rem; background:#fff; border-radius:10px; padding:16px; border:1px solid #E2E6F0; min-height:60px; }
+  .stat{ display:flex; justify-content:space-between; padding:6px 0; border-bottom:1px solid #eee; }
+  .bad{ color:#B3413B; font-weight:700; }
+  .ok{ color:#0D9488; font-weight:700; }
+</style>
+</head>
+<body>
+  <h1>📓 পড়ার খাতা — pk_tasks ডাটা যাচাই</h1>
+  <div class="warn">
+    এই পেজটা শুধু আপনার Firestore থেকে <b>পড়ে</b> দেখে — কোনো ডকুমেন্ট মুছবে না, বদলাবে না, নতুন কিছু লিখবেও না। উদ্দেশ্য শুধু বোঝা: কতগুলো টাস্কে <code>tutorId</code> / <code>studentId</code> / <code>dueDate</code> ফাঁকা আছে।
+    <br/><br/>এটা <b>file:// দিয়ে সরাসরি খুললে কাজ নাও করতে পারে</b> (ব্রাউজার ES module ব্লক করে) — তাই আপনার Netlify সাইটের ফাইলগুলোর মধ্যে সাময়িকভাবে এই ফাইলটা যোগ করে ডিপ্লয় করুন, তারপর সেই লিংক দিয়ে খুলুন। কাজ শেষে ফাইলটা সরিয়ে দিতে পারেন।
+  </div>
+  <button id="run">যাচাই শুরু করুন</button>
+  <div id="out"></div>
+
+<script type="module">
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/12.18.0/firebase-app.js";
+  import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/12.18.0/firebase-auth.js";
+  import { getFirestore, collection, getDocs } from "https://www.gstatic.com/firebasejs/12.18.0/firebase-firestore.js";
+
+  const firebaseConfig = {
+    apiKey: "AIzaSyDTU24fMu0xjmSQdb3jQjSBJRbPpmmiSZY",
+    authDomain: "porarkhata.firebaseapp.com",
+    projectId: "porarkhata",
+    storageBucket: "porarkhata.firebasestorage.app",
+    messagingSenderId: "66504991509",
+    appId: "1:66504991509:web:8fbd910dfd81c03dbe3f1c"
+  };
+
+  const out = document.getElementById('out');
+  const btn = document.getElementById('run');
+  const log = (t) => { out.textContent += t + "\n"; };
+
+  btn.addEventListener('click', async () => {
+    btn.disabled = true;
+    out.textContent = '';
+    try{
+      log('Firebase-এ কানেক্ট হচ্ছে...');
+      const app = initializeApp(firebaseConfig);
+      const auth = getAuth(app);
+      const db = getFirestore(app);
+      await signInAnonymously(auth);
+      log('কানেক্ট হয়েছে। pk_tasks কালেকশন পড়া হচ্ছে (একটু সময় লাগতে পারে)...\n');
+
+      const snap = await getDocs(collection(db, 'pk_tasks'));
+      const docs = snap.docs.map(d => d.data());
+      const total = docs.length;
+      const missingTutor = docs.filter(t => !t.tutorId).length;
+      const missingStudent = docs.filter(t => !t.studentId).length;
+      const missingDue = docs.filter(t => !t.dueDate).length;
+      const missingAssigned = docs.filter(t => !t.assignedDate).length;
+
+      log(`মোট pk_tasks রেকর্ড: ${total}\n`);
+      log(`tutorId খালি:      ${missingTutor}  (${total ? (missingTutor/total*100).toFixed(1) : 0}%)`);
+      log(`studentId খালি:    ${missingStudent}  (${total ? (missingStudent/total*100).toFixed(1) : 0}%)`);
+      log(`dueDate খালি:      ${missingDue}  (${total ? (missingDue/total*100).toFixed(1) : 0}%)`);
+      log(`assignedDate খালি: ${missingAssigned}  (${total ? (missingAssigned/total*100).toFixed(1) : 0}%)`);
+
+      if(missingTutor || missingStudent || missingDue){
+        log('\n--- খালি ফিল্ডযুক্ত কয়েকটা নমুনা রেকর্ডের id (সর্বোচ্চ ১০টা) ---');
+        const bad = docs.filter(t => !t.tutorId || !t.studentId || !t.dueDate).slice(0, 10);
+        bad.forEach(t => log(`id: ${t.id}  |  tutorId: ${t.tutorId||'❌ খালি'}  |  studentId: ${t.studentId||'❌ খালি'}  |  dueDate: ${t.dueDate||'❌ খালি'}  |  subject: ${t.subject||''}`));
+        log('\nফলাফল: হ্যাঁ, এই রেকর্ডগুলোই স্কোপড/রেঞ্জ-কোয়েরিতে বাদ পড়ছিল।');
+      } else {
+        log('\nফলাফল: সব রেকর্ডেই tutorId/studentId/dueDate ঠিকভাবে আছে — এই কারণে সমস্যা হয়নি, অন্য কিছু খুঁজতে হবে।');
+      }
+    }catch(e){
+      log('এরর হয়েছে: ' + e.message);
+      log('(Firestore Security Rules বা ইন্টারনেট কানেকশন চেক করুন)');
+    }
+    btn.disabled = false;
+  });
+</script>
+</body>
+</html>
