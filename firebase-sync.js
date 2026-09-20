@@ -259,29 +259,24 @@ try{
     return q;
   }
 
-  const ROLLING_WINDOW_DAYS = 7;
-  function daysAgoISO(n){ const dt = new Date(); dt.setDate(dt.getDate()-n); return dt.toISOString().slice(0,10); }
-
   let scopeUnsubs = [];
   window.CloudSync.setScope = (scope) => {
     scopeUnsubs.forEach(u=>{ try{ u(); }catch(e){} });
     scopeUnsubs = [];
     if(!scope || !scope.myId) return; // nobody logged in — nothing to sync
     SCOPABLE_KEYS.forEach(async key => {
-      // pk_tasks only, for now: bound the always-live copy to tasks whose
-      // dueDate hasn't expired more than ROLLING_WINDOW_DAYS days ago.
-      // Deliberately dueDate, not assignedDate: a future/near-term dueDate
-      // is always >= a past cutoff regardless of when it was assigned, so
-      // this alone correctly keeps both "দেওয়া" (given, by assignedDate) and
-      // "মিস/বাকি" (by dueDate) relevant — only tasks whose deadline is
-      // genuinely stale (>7 days past) drop out of the live window. A
-      // completed task rides along on the same dueDate rule; completedDate
-      // itself isn't used for windowing (confirmed not needed).
-      // pk_notifications/pk_followups stay as Phase-1 (role-scoped, full
-      // history) — see the README note on why those were deprioritized.
-      const dateField = key === 'pk_tasks' ? 'dueDate' : null;
-      const minISO = dateField ? daysAgoISO(ROLLING_WINDOW_DAYS) : null;
-      const q = scopedQueryFor(key, scope, dateField, minISO);
+      // REVERTED: this used to also bound pk_tasks by dueDate (a rolling
+      // ~7-day window) — turned out MANY unrelated places in app.js
+      // (studentProgress(), syllabus %, tutor/admin summary stats — ~31
+      // call sites total) silently assume tasks()/studentTasks() means
+      // "this person's entire history", not "recent window". Windowing the
+      // always-live copy broke all of those (showed wrong totals) without
+      // any error, which is worse than the storage problem it was meant to
+      // fix. Role-scoping (below) stays — that part was safe and already
+      // cuts the data by roughly 100-400x on its own. Revisiting date-
+      // windowing needs an audit of every tasks() call site first, not
+      // another attempt at the sync layer alone.
+      const q = scopedQueryFor(key, scope);
       if(!q) return;
       try{
         const snap = await getDocs(q);
