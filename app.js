@@ -276,7 +276,8 @@ const state = { role:'student', view:'dashboard', chatWith:null, revisionRange:'
   tutorDashTab:'given', tutorDashRange:'week', tutorDashCustomFrom:null, tutorDashCustomTo:null,
   tutorDashClassFilter:'all', tutorDashStudentFilter:null,
   adminDashTab:'given', adminDashRange:'week', adminDashCustomFrom:null, adminDashCustomTo:null,
-  adminDashClassFilter:'all', adminDashStudentFilter:null };
+  adminDashClassFilter:'all', adminDashStudentFilter:null,
+  taskRangeCache:{}, guardianActiveChildId:null };
 let lastRenderedView = null;
 
 function currentUser(){
@@ -765,7 +766,7 @@ function taskCardHtml(t){
         ${t.hasAssignPhoto? `<button class="btn-sm" data-action="view-photo" data-id="${t.id}_given">📎 শিক্ষকের ছবি</button>`:''}
         ${t.hasPhoto? `<button class="btn-sm" data-action="view-photo" data-id="${t.id}">📷 আমার ছবি</button>`:''}
       </div>`:''}
-    ${isCompleting ? completionFormHtml(t) : (st!=='done' ? `<div class="task-card-actions">${studentActionButtons(t,st)}</div>` : '')}
+    ${isCompleting ? completionFormHtml(t) : (st!=='done' && !t.__readOnly ? `<div class="task-card-actions">${studentActionButtons(t,st)}</div>` : '')}
   </div>`;
 }
 function studentGivenCardsHtml(ts){
@@ -802,17 +803,20 @@ function renderStudentDashboard(user){
     ['given','📚 শিক্ষকের দেওয়া পড়া'],
     ['due','📅 পড়া আদায়ের শেষ তারিখ অনুযায়ী'],
   ];
-  const dateField = tab==='due' ? 'dueDate' : 'assignedDate';
-  let scopedTasks = studentTasks(user.id);
-  if(range==='custom'){
-    const from = state.studentDashCustomFrom, to = state.studentDashCustomTo;
-    if(from) scopedTasks = scopedTasks.filter(t => (t[dateField]||t.dueDate) >= from);
-    if(to) scopedTasks = scopedTasks.filter(t => (t[dateField]||t.dueDate) <= to);
+  let tabContent;
+  if(range==='week'){
+    tabContent = tab==='due' ? studentByDueDateCardsHtml(studentTasks(user.id)) : studentGivenCardsHtml(studentTasks(user.id));
   } else {
-    const minDate = daysAgoISO(DASH_RANGE_DAYS[range] || 7);
-    scopedTasks = scopedTasks.filter(t => (t[dateField]||t.dueDate) >= minDate);
+    const bounds = rangeToBounds(range, state.studentDashCustomFrom, state.studentDashCustomTo);
+    const cacheKey = `student-dash:${user.id}:${JSON.stringify(bounds)}`;
+    const cached = state.taskRangeCache[cacheKey];
+    if(!cached){
+      tabContent = `<div class="empty">লোড হচ্ছে…</div>`;
+    } else {
+      const marked = markOutOfWindow(cached);
+      tabContent = tab==='due' ? studentByDueDateCardsHtml(marked) : studentGivenCardsHtml(marked);
+    }
   }
-  const tabContent = tab==='due' ? studentByDueDateCardsHtml(scopedTasks) : studentGivenCardsHtml(scopedTasks);
   return `
   <div class="grid cols-4">
     <div class="card margin"><h3>মোট পড়া</h3><div class="stat-num">${prog.total}</div><div class="stat-label">এখন পর্যন্ত দেওয়া</div></div>
@@ -1306,14 +1310,15 @@ function tutorDashboardTaskTabsHtml(myStudents){
 
   const dateField = tab==='due' ? 'dueDate' : 'assignedDate';
   const scopedIds = new Set(scopedStudents.map(s=>s.id));
-  let pool = tasks().filter(t=>scopedIds.has(t.studentId));
-  if(range==='custom'){
-    const from = state.tutorDashCustomFrom, to = state.tutorDashCustomTo;
-    if(from) pool = pool.filter(t => (t[dateField]||t.dueDate) >= from);
-    if(to) pool = pool.filter(t => (t[dateField]||t.dueDate) <= to);
+  const user = currentUser();
+  let pool;
+  if(range==='week'){
+    pool = tasks().filter(t=>scopedIds.has(t.studentId));
   } else {
-    const minDate = daysAgoISO(DASH_RANGE_DAYS[range] || 7);
-    pool = pool.filter(t => (t[dateField]||t.dueDate) >= minDate);
+    const bounds = rangeToBounds(range, state.tutorDashCustomFrom, state.tutorDashCustomTo);
+    const cacheKey = `tutor-dash:${user.id}:${JSON.stringify(bounds)}`;
+    const cached = state.taskRangeCache[cacheKey];
+    pool = cached ? markOutOfWindow(cached).filter(t=>scopedIds.has(t.studentId)) : null;
   }
 
   const tabs = [
@@ -1322,9 +1327,11 @@ function tutorDashboardTaskTabsHtml(myStudents){
   ];
   const opts = {
     showStudent: scopedStudents.length>1,
-    actions: (t,st)=> tutorTaskActionButtons(t) + (st==='done' ? manageDoneTaskButtonsHtml(t) : '')
+    actions: (t,st)=> (t.__readOnly ? '' : tutorTaskActionButtons(t) + (st==='done' ? manageDoneTaskButtonsHtml(t) : ''))
   };
-  const content = tab==='due' ? rowGroupedByDueDateHtml(pool, opts) : rowGroupedByAssignedDateHtml(pool, opts);
+  const content = pool===null
+    ? `<div class="empty">লোড হচ্ছে…</div>`
+    : (tab==='due' ? rowGroupedByDueDateHtml(pool, opts) : rowGroupedByAssignedDateHtml(pool, opts));
   return `
   <div class="section-title" style="margin-top:24px"><h3>সকল পড়া</h3></div>
   <div class="grid cols-2" style="margin:10px 0 12px">
@@ -1381,14 +1388,14 @@ function adminDashboardTaskTabsHtml(){
 
   const dateField = tab==='due' ? 'dueDate' : 'assignedDate';
   const scopedIds = new Set(scopedStudents.map(s=>s.id));
-  let pool = tasks().filter(t=>scopedIds.has(t.studentId));
-  if(range==='custom'){
-    const from = state.adminDashCustomFrom, to = state.adminDashCustomTo;
-    if(from) pool = pool.filter(t => (t[dateField]||t.dueDate) >= from);
-    if(to) pool = pool.filter(t => (t[dateField]||t.dueDate) <= to);
+  let pool;
+  if(range==='week'){
+    pool = tasks().filter(t=>scopedIds.has(t.studentId));
   } else {
-    const minDate = daysAgoISO(DASH_RANGE_DAYS[range] || 7);
-    pool = pool.filter(t => (t[dateField]||t.dueDate) >= minDate);
+    const bounds = rangeToBounds(range, state.adminDashCustomFrom, state.adminDashCustomTo);
+    const cacheKey = `admin-dash:${JSON.stringify(bounds)}`;
+    const cached = state.taskRangeCache[cacheKey];
+    pool = cached ? markOutOfWindow(cached).filter(t=>scopedIds.has(t.studentId)) : null;
   }
 
   const tabs = [
@@ -1397,9 +1404,11 @@ function adminDashboardTaskTabsHtml(){
   ];
   const opts = {
     showStudent: scopedStudents.length>1,
-    actions: (t,st)=> tutorTaskActionButtons(t) + (st==='done' ? manageDoneTaskButtonsHtml(t) : '')
+    actions: (t,st)=> (t.__readOnly ? '' : tutorTaskActionButtons(t) + (st==='done' ? manageDoneTaskButtonsHtml(t) : ''))
   };
-  const content = tab==='due' ? rowGroupedByDueDateHtml(pool, opts) : rowGroupedByAssignedDateHtml(pool, opts);
+  const content = pool===null
+    ? `<div class="empty">লোড হচ্ছে…</div>`
+    : (tab==='due' ? rowGroupedByDueDateHtml(pool, opts) : rowGroupedByAssignedDateHtml(pool, opts));
   return `
   <div class="section-title" style="margin-top:24px"><h3>সকল পড়া</h3></div>
   <div class="grid cols-2" style="margin:10px 0 12px">
@@ -1531,50 +1540,162 @@ function renderTutorStudents(user){
   `;
 }
 
+/* Phase-2, step 1 (pilot surface): the always-live local pk_tasks cache is
+   now bounded to a rolling ~7-day window by dueDate (see firebase-sync.js).
+   When someone picks a wider range (পাক্ষিক/মাসিক/তারিখ অনুসারে) here, that
+   data usually isn't in localStorage at all — this fetches it once (not a
+   live subscription) and keeps it in an in-memory-only cache for this
+   session. Deliberately NOT merged into the real tasks()/localStorage array
+   the edit/delete/complete buttons operate on — records that only exist in
+   this wider-range cache are shown read-only (no action buttons), since
+   they're outside the actively-synced set. cacheKey should uniquely
+   identify the query (role/student/date range); scope is the same shape
+   fetchTaskRange expects ({role, myId, childIds?, studentId?}). */
+async function ensureWiderTaskRange(cacheKey, scope, fromISO, toISO){
+  if(state.taskRangeCache[cacheKey]) return state.taskRangeCache[cacheKey];
+  if(!window.CloudSync || !window.CloudSync.fetchTaskRange) return null;
+  try{
+    const data = await window.CloudSync.fetchTaskRange(scope, 'dueDate', fromISO||null, toISO||null);
+    state.taskRangeCache[cacheKey] = data;
+    return data;
+  }catch(e){
+    toast('⚠️ পুরনো রেঞ্জের ডাটা আনতে সমস্যা হয়েছে — ইন্টারনেট চেক করুন।', 'warn');
+    return null;
+  }
+}
+/* Range → {from,to} ISO bounds, or null bounds for 'week' (already covered
+   by the live rolling window, so no fetch needed — the fast/common path). */
+function rangeToBounds(range, customFrom, customTo){
+  if(range==='custom') return { from: customFrom||null, to: customTo||null };
+  if(range==='week' || !range) return null; // covered by the live rolling window already
+  return { from: daysAgoISO(DASH_RANGE_DAYS[range] || 7), to: null };
+}
+/* Marks which of a task list's items are only visible via the wider-range
+   cache (i.e. not in the live-synced tasks()) — those get no management
+   buttons, since editing/deleting them wouldn't reflect back into tasks(). */
+function markOutOfWindow(list){
+  const liveIds = new Set(tasks().map(t=>t.id));
+  return list.map(t => liveIds.has(t.id) ? t : { ...t, __readOnly:true });
+}
+/* Pilot wiring for the tutor's "আমার স্টুডেন্ট" মিস/সম্পন্ন filter — kicks off
+   (and caches) the wider-range fetch when needed. See ensureWiderTaskRange. */
+async function triggerTutorTaskRangeFetch(){
+  const range = state.tutorTaskRange || 'week';
+  if(range==='week') return; // covered by the live rolling window already
+  const user = currentUser();
+  if(!user) return;
+  const bounds = rangeToBounds(range, state.tutorTaskCustomFrom, state.tutorTaskCustomTo);
+  const activeStudentId = state.tutorStudentFilter;
+  const scope = { role:'tutor', myId:user.id, studentId: activeStudentId || undefined };
+  const cacheKey = `tutor-filter:${activeStudentId||'all'}:${JSON.stringify(bounds)}`;
+  await ensureWiderTaskRange(cacheKey, scope, bounds && bounds.from, bounds && bounds.to);
+}
+/* Same idea for the other four given/due surfaces — one fetch per (surface,
+   date-range) pair; class/student filter changes within a surface reuse the
+   same cached fetch and just re-filter it client-side (see each render
+   function), so only range/custom-date changes need to call these. */
+async function triggerStudentDashRangeFetch(){
+  const range = state.studentDashRange || 'week';
+  if(range==='week') return;
+  const user = currentUser();
+  if(!user) return;
+  const bounds = rangeToBounds(range, state.studentDashCustomFrom, state.studentDashCustomTo);
+  const cacheKey = `student-dash:${user.id}:${JSON.stringify(bounds)}`;
+  await ensureWiderTaskRange(cacheKey, { role:'student', myId:user.id }, bounds && bounds.from, bounds && bounds.to);
+}
+async function triggerGuardianDashRangeFetch(studentId){
+  const range = state.guardianDashRange || 'week';
+  if(range==='week') return;
+  const user = currentUser();
+  if(!user || !studentId) return;
+  const bounds = rangeToBounds(range, state.guardianDashCustomFrom, state.guardianDashCustomTo);
+  const cacheKey = `guardian-dash:${studentId}:${JSON.stringify(bounds)}`;
+  await ensureWiderTaskRange(cacheKey, { role:'guardian', myId:user.id, studentId }, bounds && bounds.from, bounds && bounds.to);
+}
+async function triggerTutorDashRangeFetch(){
+  const range = state.tutorDashRange || 'week';
+  if(range==='week') return;
+  const user = currentUser();
+  if(!user) return;
+  const bounds = rangeToBounds(range, state.tutorDashCustomFrom, state.tutorDashCustomTo);
+  // fetches ALL of this tutor's own tasks in range (not narrowed by the class/
+  // student filter) — the class/student dropdown then just re-filters the
+  // same cached set client-side, so switching it doesn't need another fetch.
+  const cacheKey = `tutor-dash:${user.id}:${JSON.stringify(bounds)}`;
+  await ensureWiderTaskRange(cacheKey, { role:'tutor', myId:user.id }, bounds && bounds.from, bounds && bounds.to);
+}
+async function triggerAdminDashRangeFetch(){
+  const range = state.adminDashRange || 'week';
+  if(range==='week') return;
+  const user = currentUser();
+  if(!user) return;
+  const bounds = rangeToBounds(range, state.adminDashCustomFrom, state.adminDashCustomTo);
+  // admin isn't scoped by person, so one fetch per date-range covers every
+  // class/student combination — same reasoning as the tutor dashboard above.
+  const cacheKey = `admin-dash:${JSON.stringify(bounds)}`;
+  await ensureWiderTaskRange(cacheKey, { role:'admin', myId:user.id }, bounds && bounds.from, bounds && bounds.to);
+}
+
 /* "মিস হওয়া পড়া" (pending/missed) vs "সম্পন্ন হওয়া পড়া" (completed) as two
    separate tabs, each filterable by সাপ্তাহিক (last 7 days) / মাসিক (last 30
    days) / তারিখ অনুসারে (a custom from–to date range) — used inside the
    tutor's "আমার স্টুডেন্ট" → class/student filter section. */
-const TUTOR_TASK_RANGE_DAYS = { week:7, month:30 };
+const TUTOR_TASK_RANGE_DAYS = { week:7, fortnight:15, month:30 };
 function tutorTaskFilterTabsHtml(activeStudentId, visibleStudents){
   const tab = state.tutorTaskTab==='done' ? 'done' : 'missed';
   const range = state.tutorTaskRange || 'week';
   const dateField = tab==='done' ? 'completedDate' : 'dueDate';
 
-  const pool = activeStudentId
-    ? studentTasks(activeStudentId)
-    : dedupeCommonTasks(tasks().filter(t=>visibleStudents.some(s=>s.id===t.studentId)));
-
-  let filtered = pool.filter(t => tab==='done' ? effectiveStatus(t)==='done' : effectiveStatus(t)!=='done');
-
-  if(range==='week' || range==='month'){
-    const minDate = daysAgoISO(TUTOR_TASK_RANGE_DAYS[range]);
-    filtered = filtered.filter(t => (t[dateField] || t.dueDate) >= minDate);
-  } else if(range==='custom'){
-    const from = state.tutorTaskCustomFrom, to = state.tutorTaskCustomTo;
-    if(from) filtered = filtered.filter(t => (t[dateField] || t.dueDate) >= from);
-    if(to) filtered = filtered.filter(t => (t[dateField] || t.dueDate) <= to);
+  let pool = null;
+  let loading = false;
+  if(range==='week'){
+    // fast path — already covered by the live rolling window, no fetch needed
+    pool = activeStudentId
+      ? studentTasks(activeStudentId)
+      : dedupeCommonTasks(tasks().filter(t=>visibleStudents.some(s=>s.id===t.studentId)));
+  } else {
+    const bounds = rangeToBounds(range, state.tutorTaskCustomFrom, state.tutorTaskCustomTo);
+    const cacheKey = `tutor-filter:${activeStudentId||'all'}:${JSON.stringify(bounds)}`;
+    const cached = state.taskRangeCache[cacheKey];
+    if(!cached){
+      loading = true; // the change-handler already kicked off the fetch; it'll re-render when ready
+    } else {
+      const marked = markOutOfWindow(cached);
+      pool = activeStudentId
+        ? marked.filter(t=>t.studentId===activeStudentId)
+        : dedupeCommonTasks(marked.filter(t=>visibleStudents.some(s=>s.id===t.studentId)));
+    }
   }
 
-  const groups = [];
-  filtered.slice()
-    .sort((a,b)=> tab==='done' ? (b.completedDate||'').localeCompare(a.completedDate||'') : a.dueDate.localeCompare(b.dueDate))
-    .forEach(t=>{
-      const dv = t[dateField] || t.dueDate;
-      let g = groups.find(g=>g.dueDate===dv);
-      if(!g){ g = {label: relativeDateLabel(dv), dueDate: dv, items:[]}; groups.push(g); }
-      g.items.push(t);
-    });
+  let listHtml;
+  if(loading){
+    listHtml = `<div class="empty">লোড হচ্ছে…</div>`;
+  } else {
+    let filtered = pool.filter(t => tab==='done' ? effectiveStatus(t)==='done' : effectiveStatus(t)!=='done');
+    // no extra local date-filter needed here anymore — `pool` is already
+    // scoped to the right dueDate range, either by the live rolling window
+    // ('week') or by the fetch in the branch above (fortnight/month/custom).
 
-  const rowActions = tab==='done'
-    ? (t)=> t.__count>1 ? '' : (tutorTaskActionButtons(t) + manageDoneTaskButtonsHtml(t))
-    : (t)=> t.__count>1 ? '' : tutorTaskActionButtons(t);
+    const groups = [];
+    filtered.slice()
+      .sort((a,b)=> tab==='done' ? (b.completedDate||'').localeCompare(a.completedDate||'') : a.dueDate.localeCompare(b.dueDate))
+      .forEach(t=>{
+        const dv = t[dateField] || t.dueDate;
+        let g = groups.find(g=>g.dueDate===dv);
+        if(!g){ g = {label: relativeDateLabel(dv), dueDate: dv, items:[]}; groups.push(g); }
+        g.items.push(t);
+      });
 
-  const listHtml = groups.length ? groups.map(g=>`
-      <div class="section-title" style="margin-top:14px; margin-bottom:6px"><h3 style="font-size:.95rem">${g.label}</h3></div>
-      ${g.items.map(t=>taskRowHtml(t,{actions:rowActions})).join('')}
-    `).join('')
-    : `<div class="empty">${tab==='done' ? 'এই সময়সীমায় কোনো পড়া সম্পন্ন হয়নি।' : 'এই সময়সীমায় কোনো বাকি/মিস হওয়া পড়া নেই।'}</div>`;
+    const rowActions = tab==='done'
+      ? (t)=> (t.__count>1 || t.__readOnly) ? '' : (tutorTaskActionButtons(t) + manageDoneTaskButtonsHtml(t))
+      : (t)=> (t.__count>1 || t.__readOnly) ? '' : tutorTaskActionButtons(t);
+
+    listHtml = groups.length ? groups.map(g=>`
+        <div class="section-title" style="margin-top:14px; margin-bottom:6px"><h3 style="font-size:.95rem">${g.label}</h3></div>
+        ${g.items.map(t=>taskRowHtml(t,{actions:rowActions})).join('')}
+      `).join('')
+      : `<div class="empty">${tab==='done' ? 'এই সময়সীমায় কোনো পড়া সম্পন্ন হয়নি।' : 'এই সময়সীমায় কোনো বাকি/মিস হওয়া পড়া নেই।'}</div>`;
+  }
 
   return `
     <div class="grid cols-2" style="margin-bottom:12px">
@@ -1585,6 +1706,7 @@ function tutorTaskFilterTabsHtml(activeStudentId, visibleStudents){
       <label>সময়কাল
         <select data-role="tutor-task-range">
           <option value="week" ${range==='week'?'selected':''}>সাপ্তাহিক</option>
+          <option value="fortnight" ${range==='fortnight'?'selected':''}>পাক্ষিক</option>
           <option value="month" ${range==='month'?'selected':''}>মাসিক</option>
           <option value="custom" ${range==='custom'?'selected':''}>তারিখ অনুসারে</option>
         </select>
@@ -1931,7 +2053,7 @@ function renderGuardianDashboard(user){
 
 function renderGuardianChildren(user, focusId){
   const kids = (user.childIds||[]).map(findUser).filter(Boolean);
-  const active = focusId || kids[0]?.id;
+  const active = focusId || state.guardianActiveChildId || kids[0]?.id;
   if(!active) return '<div class="empty">কোনো সন্তান লিংক করা নেই।</div>';
   return `
   <div class="grid cols-3" style="margin-bottom:14px">
@@ -1973,18 +2095,19 @@ function guardianTaskTabsHtml(studentId){
     ['given','📚 শিক্ষকের দেওয়া পড়া'],
     ['due','📅 পড়া আদায়ের শেষ তারিখ অনুযায়ী'],
   ];
-  const opts = { actions: (t,st)=> st==='done' ? manageDoneTaskButtonsHtml(t) : '' };
-  const dateField = tab==='due' ? 'dueDate' : 'assignedDate';
-  let ts = studentTasks(studentId);
-  if(range==='custom'){
-    const from = state.guardianDashCustomFrom, to = state.guardianDashCustomTo;
-    if(from) ts = ts.filter(t => (t[dateField]||t.dueDate) >= from);
-    if(to) ts = ts.filter(t => (t[dateField]||t.dueDate) <= to);
+  const opts = { actions: (t,st)=> (st==='done' && !t.__readOnly) ? manageDoneTaskButtonsHtml(t) : '' };
+  let ts;
+  if(range==='week'){
+    ts = studentTasks(studentId);
   } else {
-    const minDate = daysAgoISO(DASH_RANGE_DAYS[range] || 7);
-    ts = ts.filter(t => (t[dateField]||t.dueDate) >= minDate);
+    const bounds = rangeToBounds(range, state.guardianDashCustomFrom, state.guardianDashCustomTo);
+    const cacheKey = `guardian-dash:${studentId}:${JSON.stringify(bounds)}`;
+    const cached = state.taskRangeCache[cacheKey];
+    ts = cached ? markOutOfWindow(cached) : null;
   }
-  const tabContent = tab==='due' ? rowGroupedByDueDateHtml(ts, opts) : rowGroupedByAssignedDateHtml(ts, opts);
+  const tabContent = ts===null
+    ? `<div class="empty">লোড হচ্ছে…</div>`
+    : (tab==='due' ? rowGroupedByDueDateHtml(ts, opts) : rowGroupedByAssignedDateHtml(ts, opts));
   return `
   <div class="grid cols-2" style="margin-bottom:12px">
     ${tabs.map(([k,l])=>`<button class="btn-sm ${tab===k?'primary':''}" data-action="set-guardian-task-tab" data-id="${k}">${l}</button>`).join('')}
@@ -2648,7 +2771,7 @@ document.getElementById('view').addEventListener('toggle', (e)=>{
   if(d && d.tagName==='DETAILS' && d.dataset.formkey){ state.openForms[d.dataset.formkey] = d.open; }
 }, true);
 
-document.getElementById('view').addEventListener('click', (e)=>{
+document.getElementById('view').addEventListener('click', async (e)=>{
   // tap-to-reveal: routine subjects / revision rows keep their edit-delete-remind
   // icons hidden until tapped, so the list stays compact on small screens.
   const revealEl = e.target.closest && e.target.closest('[data-tap-reveal]');
@@ -2697,8 +2820,18 @@ document.getElementById('view').addEventListener('click', (e)=>{
       renderView();
     }
   }
-  if(action==='goto-child-tasks'){ state.view='children'; renderView(); document.getElementById('view').innerHTML = renderGuardianChildren(user, id); }
-  if(action==='pick-guardian-child'){ document.getElementById('view').innerHTML = renderGuardianChildren(user, id); }
+  if(action==='goto-child-tasks'){
+    state.view='children'; state.guardianActiveChildId = id;
+    renderView();
+    await triggerGuardianDashRangeFetch(id);
+    renderView();
+  }
+  if(action==='pick-guardian-child'){
+    state.guardianActiveChildId = id;
+    renderView();
+    await triggerGuardianDashRangeFetch(id);
+    renderView();
+  }
   if(action==='pick-guardian-routine'){ document.getElementById('view').innerHTML = renderGuardianRoutine(user, id); }
   if(action==='pick-tutor-routine'){ state.tutorRoutineStudent = id; state.editingRoutineId=null; renderView(); }
   if(action==='pick-admin-routine'){ state.adminRoutineStudent = id; state.editingRoutineId=null; renderView(); }
@@ -3027,9 +3160,13 @@ document.getElementById('view').addEventListener('change', async (e)=>{
     state.tutorClassFilter = e.target.value;
     state.tutorStudentFilter = null;
     renderView();
+    await triggerTutorTaskRangeFetch();
+    renderView();
   }
   if(e.target.dataset.role==='student-filter-student'){
     state.tutorStudentFilter = e.target.value || null;
+    renderView();
+    await triggerTutorTaskRangeFetch();
     renderView();
   }
   if(e.target.dataset.role==='revision-picker-class'){
@@ -3046,32 +3183,44 @@ document.getElementById('view').addEventListener('change', async (e)=>{
   }
   if(e.target.dataset.role==='tutor-task-range'){
     state.tutorTaskRange = e.target.value;
+    renderView(); // shows "লোড হচ্ছে…" immediately if this range needs a fetch
+    await triggerTutorTaskRangeFetch();
     renderView();
   }
   if(e.target.dataset.role==='tutor-task-custom-from'){
     state.tutorTaskCustomFrom = e.target.value || null;
     renderView();
+    await triggerTutorTaskRangeFetch();
+    renderView();
   }
   if(e.target.dataset.role==='tutor-task-custom-to'){
     state.tutorTaskCustomTo = e.target.value || null;
+    renderView();
+    await triggerTutorTaskRangeFetch();
     renderView();
   }
   if(e.target.dataset.role==='admin-dash-range'){
     state.adminDashRange = e.target.value;
     renderView();
+    await triggerAdminDashRangeFetch();
+    renderView();
   }
   if(e.target.dataset.role==='admin-dash-custom-from'){
     state.adminDashCustomFrom = e.target.value || null;
+    renderView();
+    await triggerAdminDashRangeFetch();
     renderView();
   }
   if(e.target.dataset.role==='admin-dash-custom-to'){
     state.adminDashCustomTo = e.target.value || null;
     renderView();
+    await triggerAdminDashRangeFetch();
+    renderView();
   }
   if(e.target.dataset.role==='tutor-dash-class'){
     state.tutorDashClassFilter = e.target.value;
     state.tutorDashStudentFilter = null;
-    renderView();
+    renderView(); // class/student filter doesn't need a new fetch — see triggerTutorDashRangeFetch's comment
   }
   if(e.target.dataset.role==='tutor-dash-student'){
     state.tutorDashStudentFilter = e.target.value || null;
@@ -3080,19 +3229,25 @@ document.getElementById('view').addEventListener('change', async (e)=>{
   if(e.target.dataset.role==='tutor-dash-range'){
     state.tutorDashRange = e.target.value;
     renderView();
+    await triggerTutorDashRangeFetch();
+    renderView();
   }
   if(e.target.dataset.role==='tutor-dash-custom-from'){
     state.tutorDashCustomFrom = e.target.value || null;
+    renderView();
+    await triggerTutorDashRangeFetch();
     renderView();
   }
   if(e.target.dataset.role==='tutor-dash-custom-to'){
     state.tutorDashCustomTo = e.target.value || null;
     renderView();
+    await triggerTutorDashRangeFetch();
+    renderView();
   }
   if(e.target.dataset.role==='admin-dash-class'){
     state.adminDashClassFilter = e.target.value;
     state.adminDashStudentFilter = null;
-    renderView();
+    renderView(); // class/student filter doesn't need a new fetch — see triggerAdminDashRangeFetch's comment
   }
   if(e.target.dataset.role==='admin-dash-student'){
     state.adminDashStudentFilter = e.target.value || null;
@@ -3101,25 +3256,37 @@ document.getElementById('view').addEventListener('change', async (e)=>{
   if(e.target.dataset.role==='student-dash-range'){
     state.studentDashRange = e.target.value;
     renderView();
+    await triggerStudentDashRangeFetch();
+    renderView();
   }
   if(e.target.dataset.role==='student-dash-custom-from'){
     state.studentDashCustomFrom = e.target.value || null;
+    renderView();
+    await triggerStudentDashRangeFetch();
     renderView();
   }
   if(e.target.dataset.role==='student-dash-custom-to'){
     state.studentDashCustomTo = e.target.value || null;
     renderView();
+    await triggerStudentDashRangeFetch();
+    renderView();
   }
   if(e.target.dataset.role==='guardian-dash-range'){
     state.guardianDashRange = e.target.value;
+    renderView();
+    await triggerGuardianDashRangeFetch(state.guardianActiveChildId);
     renderView();
   }
   if(e.target.dataset.role==='guardian-dash-custom-from'){
     state.guardianDashCustomFrom = e.target.value || null;
     renderView();
+    await triggerGuardianDashRangeFetch(state.guardianActiveChildId);
+    renderView();
   }
   if(e.target.dataset.role==='guardian-dash-custom-to'){
     state.guardianDashCustomTo = e.target.value || null;
+    renderView();
+    await triggerGuardianDashRangeFetch(state.guardianActiveChildId);
     renderView();
   }
 });
