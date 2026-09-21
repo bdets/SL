@@ -167,6 +167,22 @@ button{font-family:inherit}
 .grid.cols-3{grid-template-columns:repeat(3,1fr)}
 .grid.cols-2{grid-template-columns:repeat(2,1fr)}
 
+/* revision log subject cards: 2 columns on desktop, but align-items:start so
+   an expanded <details> only grows itself — its neighbor in the same grid
+   row stays its own natural height instead of being stretched to match
+   (CSS Grid's default align-items:stretch would otherwise force that). */
+/* True independent 2-column flow (CSS multi-column, not Grid): Grid forces
+   both items in a row to share the same row-track height even with
+   align-items:start (the row is still sized to the tallest cell, leaving a
+   visible dead gap next to a shorter neighbour) — multi-column has no "row"
+   concept at all, so expanding one card never affects the other column.
+   break-inside:avoid (below, on the card/row itself) keeps each item intact
+   instead of being cut across the column break. */
+.revision-subject-grid{ columns:2; column-gap:14px; }
+@media (max-width:900px){ .revision-subject-grid{ columns:1; } }
+.task-row-columns{ columns:2; column-gap:14px; }
+@media (max-width:900px){ .task-row-columns{ columns:1; } }
+
 .card{
   background:#fff; border:1px solid var(--paper-line); border-radius:var(--radius);
   box-shadow:var(--card-shadow); padding:16px; position:relative;
@@ -176,21 +192,23 @@ button{font-family:inherit}
 .stat-num{font-family:var(--font-display); font-size:1.9rem; font-weight:700; color:var(--ink); margin:2px 0}
 .stat-label{font-size:.85rem; color:var(--text-soft-strong)}
 
-.section-title{display:flex; align-items:center; justify-content:space-between; margin:22px 0 10px}
+.section-title{display:flex; align-items:center; justify-content:space-between; margin:22px 0 10px; break-after:avoid-column; break-inside:avoid}
 .section-title h3{margin:0; font-size:1.05rem; color:var(--ink); font-family:var(--font-display)}
 
 /* task rows are <details> elements now — compact by default, click to expand */
 .task-row{
   background:#fff; border:1px solid var(--paper-line);
   border-radius:12px; margin-bottom:10px; box-shadow:var(--card-shadow); overflow:hidden;
+  break-inside:avoid;
 }
 .task-row-summary{
-  display:flex; align-items:center; gap:10px; padding:12px 14px; cursor:pointer; list-style:none;
+  display:flex; flex-direction:column; gap:8px; padding:14px; cursor:pointer; list-style:none;
 }
 .task-row-summary::-webkit-details-marker{ display:none; }
 .task-row-summary::marker{ content:''; }
-.task-summary-text{ flex:1; min-width:0; display:flex; align-items:center; gap:8px; flex-wrap:wrap }
-.task-title-compact{ color:var(--text); font-weight:700; font-size:.95rem; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:100%; }
+.task-row-summary-top{ display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+.task-row-summary-top .task-status-label{ margin-left:auto; }
+.task-title-compact{ color:var(--text); font-weight:700; font-size:.98rem; overflow-wrap:break-word; }
 .chevron{ color:var(--text-soft-strong); font-size:.85rem; transition:transform .15s; flex:none; }
 .task-row[open] .chevron{ transform:rotate(90deg); }
 .task-row[open] .task-row-summary{ border-bottom:1px solid var(--paper-line); }
@@ -259,7 +277,7 @@ textarea{resize:vertical; min-height:64px}
    and each completed item wraps as a row-card — no fixed table, no page column,
    so long অধ্যায়/টপিক text and প্রশ্ন text just wrap instead of overlapping.
    The date sits on its own line under the reading, with edit-icons tap-reveal too. */
-.revision-subject-card{background:#fff; border:1px solid var(--paper-line); border-radius:var(--radius); box-shadow:var(--card-shadow); margin-bottom:12px; overflow:hidden}
+.revision-subject-card{background:#fff; border:1px solid var(--paper-line); border-radius:var(--radius); box-shadow:var(--card-shadow); margin-bottom:12px; overflow:hidden; break-inside:avoid}
 .revision-subject-card summary{cursor:pointer; font-weight:700; color:var(--ink); padding:14px 16px; list-style:none}
 .revision-subject-card summary::-webkit-details-marker{display:none}
 .revision-subject-card summary::before{content:'▸ '; color:var(--text-soft)}

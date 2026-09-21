@@ -272,7 +272,7 @@ const state = { role:'student', view:'dashboard', chatWith:null, revisionRange:'
   stickyAdduserRole:null, stickyAdduserClassName:null,
   studentDashTab:'given', studentDashRange:'week', studentDashCustomFrom:null, studentDashCustomTo:null,
   guardianTaskTab:'given', guardianDashRange:'week', guardianDashCustomFrom:null, guardianDashCustomTo:null,
-  tutorTaskTab:'missed', tutorTaskRange:'week', tutorTaskCustomFrom:null, tutorTaskCustomTo:null,
+  tutorTaskTab:'given', tutorTaskRange:'week', tutorTaskCustomFrom:null, tutorTaskCustomTo:null,
   tutorDashTab:'given', tutorDashRange:'week', tutorDashCustomFrom:null, tutorDashCustomTo:null,
   tutorDashClassFilter:'all', tutorDashStudentFilter:null,
   adminDashTab:'given', adminDashRange:'week', adminDashCustomFrom:null, adminDashCustomTo:null,
@@ -545,18 +545,18 @@ function taskRowHtml(t, opts={}){
   const student = findUser(t.studentId);
   const isCompleting = state.completingTaskId === t.id;
   const summary = `
-    <span class="stamp ${st}">${STATUS_STAMP[st]}</span>
-    <span class="task-summary-text">
+    <div class="task-row-summary-top">
+      <span class="stamp ${st}">${STATUS_STAMP[st]}</span>
       <span class="subject-chip">${t.subject}</span>
-      <b class="task-title-compact">${t.chapter}</b>
       ${t.hasPhoto? `<span class="pill photo" title="ছাত্র ছবি জমা দিয়েছে">📷</span>`:''}
       ${t.hasAssignPhoto? `<span class="pill photo" title="শিক্ষকের দেওয়া ছবি আছে">📎</span>`:''}
       ${t.__count>1? `<span class="pill" title="${t.__count} জন শিক্ষার্থীর জন্য কমন">×${t.__count}</span>`:''}
       ${opts.showStudent? `<span class="pill student">${student? student.name:''}</span>`:''}
       ${t.source==='guardian'? `<span class="pill guardian">অভিভাবক প্রদত্ত</span>`:''}
-    </span>
-    <span class="task-status-label ${st}">${STATUS_LABEL[st]}${st==='partial' && t.percent?` (${t.percent}%)`:''}</span>
-    <span class="chevron">▸</span>
+      <span class="task-status-label ${st}">${STATUS_LABEL[st]}${st==='partial' && t.percent?` (${t.percent}%)`:''}</span>
+      <span class="chevron">▸</span>
+    </div>
+    <b class="task-title-compact">${t.chapter}</b>
   `;
   const body = `
       <div class="task-meta">ধরন: ${t.type} · দেওয়া হয়েছে: ${fmtDateWithDay(t.assignedDate)} · শেষ তারিখ: ${fmtDateWithDay(t.dueDate)}${t.completedDate? ' · আদায়: '+fmtDateWithDay(t.completedDate):''}${t.pageFrom?' · পৃষ্ঠা: '+t.pageFrom+'-'+t.pageTo:''}</div>
@@ -729,10 +729,10 @@ function groupByAssignedDate(ts){
    that aren't appropriate for a guardian to click on the student's behalf. */
 function rowGroupedByAssignedDateHtml(ts, opts={}){
   if(!ts.length) return '<div class="empty">এখনো কোনো পড়া দেওয়া হয়নি।</div>';
-  return groupByAssignedDate(ts).map(g=>`
+  return `<div class="task-row-columns">${groupByAssignedDate(ts).map(g=>`
     <div class="section-title" style="margin-top:16px; margin-bottom:6px"><h3 style="font-size:.95rem">${g.label}</h3></div>
     ${g.items.map(t=>taskRowHtml(t,opts)).join('')}
-  `).join('');
+  `).join('')}</div>`;
 }
 function rowGroupedByDueDateHtml(ts, opts={}){
   if(!ts.length) return '<div class="empty">এখনো কোনো পড়া দেওয়া হয়নি।</div>';
@@ -742,10 +742,10 @@ function rowGroupedByDueDateHtml(ts, opts={}){
     if(!g){ g = {date:t.dueDate, label: fmtDateWithDay(t.dueDate), items:[]}; groups.push(g); }
     g.items.push(t);
   });
-  return groups.map(g=>`
+  return `<div class="task-row-columns">${groups.map(g=>`
     <div class="section-title" style="margin-top:16px; margin-bottom:6px"><h3 style="font-size:.95rem">${g.label}</h3></div>
     ${g.items.map(t=>taskRowHtml(t,opts)).join('')}
-  `).join('');
+  `).join('')}</div>`;
 }
 function taskCardHtml(t){
   const st = effectiveStatus(t);
@@ -822,8 +822,7 @@ function renderStudentDashboard(user){
     <div class="card margin"><h3>বাকি আছে</h3><div class="stat-num">${pending.length}</div><div class="stat-label">এখনো শেষ হয়নি</div></div>
     <div class="card margin"><h3>মিস হয়েছে</h3><div class="stat-num" style="color:var(--danger)">${missed.length}</div><div class="stat-label">সময়মতো হয়নি</div></div>
   </div>
-  ${nextClassCardHtml(user.id)}
-  ${revisionCheckHtml(user.id)}
+  ${(()=>{ const nc = nextClassCardHtml(user.id); const rv = revisionCheckHtml(user.id); return nc ? `<div class="grid cols-2">${nc}${rv}</div>` : rv; })()}
   <div class="section-title"><h3>সিলেবাস অগ্রগতি</h3></div>
   <div class="card margin">${syllabusProgressHtml(user.id)}</div>
   <div class="grid cols-2" style="margin-top:20px; margin-bottom:12px">
@@ -1171,7 +1170,7 @@ function renderRevisionLog(user, forcedStudentId){
 
   return `${pickerHtml}${syllabusHtml}${snapshotHtml}${rangeTabs}
     <p style="color:var(--text-soft-strong); font-size:.85rem; margin-top:-4px">পরীক্ষার আগে বিষয়ভিত্তিক গোছানো রিভিশনের জন্য — অধ্যায়/টপিক ও প্রশ্নসহ।</p>
-    ${subjectsHtml || '<div class="empty">এই সময়সীমায় কোনো পড়া সম্পন্ন হয়নি।</div>'}`;
+    ${subjectsHtml ? `<div class="revision-subject-grid">${subjectsHtml}</div>` : '<div class="empty">এই সময়সীমায় কোনো পড়া সম্পন্ন হয়নি।</div>'}`;
 }
 
 /* ==========================================================
@@ -1286,83 +1285,16 @@ function renderTutorDashboard(user){
     </div>`;
   }).join('') || '<div class="empty">কোনো স্টুডেন্ট যুক্ত নেই। প্রশাসককে বলে যুক্ত করান।</div>'}
   </div>
-  ${tutorDashboardTaskTabsHtml(myStudents)}
   `;
 }
 
-/* "সকল পড়া" block for the bottom of the tutor's own dashboard — same two
-   given/due tabs as the student dashboard, with the tutor's usual management
-   buttons (এডিট/মুছুন always; সম্পন্ন-হয়নি/মনে-করিয়ে-দিন for done items)
-   appearing when a reading card is opened. Also filterable by class/student
-   and by সাপ্তাহিক (default) / পাক্ষিক / মাসিক / তারিখ অনুসারে. */
+/* Comment kept for context: the "📚 শিক্ষকের দেওয়া পড়া" / "📅 পড়া আদায়ের শেষ
+   তারিখ অনুযায়ী" tabs used to also appear at the bottom of this dashboard —
+   removed on request, since the same two tabs already live in "আমার
+   স্টুডেন্ট" → filter section (tutorTaskFilterTabsHtml) and having them twice
+   was redundant. DASH_RANGE_DAYS below is still used by the student/
+   guardian/admin range filters elsewhere in this file. */
 const DASH_RANGE_DAYS = { week:7, fortnight:15, month:30 };
-function tutorDashboardTaskTabsHtml(myStudents){
-  const tab = state.tutorDashTab==='due' ? 'due' : 'given';
-  const range = state.tutorDashRange || 'week';
-  const classes = [...new Set(myStudents.map(s=>s.className).filter(Boolean))].sort((a,b)=>CLASSES.indexOf(a)-CLASSES.indexOf(b));
-  const classFilter = state.tutorDashClassFilter && (state.tutorDashClassFilter==='all' || classes.includes(state.tutorDashClassFilter)) ? state.tutorDashClassFilter : 'all';
-  const studentsInClass = myStudents.filter(s => classFilter==='all' || s.className===classFilter);
-  const activeStudent = state.tutorDashStudentFilter && studentsInClass.some(s=>s.id===state.tutorDashStudentFilter) ? state.tutorDashStudentFilter : null;
-  const scopedStudents = activeStudent ? studentsInClass.filter(s=>s.id===activeStudent) : studentsInClass;
-
-  const dateField = tab==='due' ? 'dueDate' : 'assignedDate';
-  const scopedIds = new Set(scopedStudents.map(s=>s.id));
-  let pool = tasks().filter(t=>scopedIds.has(t.studentId));
-  if(range==='custom'){
-    const from = state.tutorDashCustomFrom, to = state.tutorDashCustomTo;
-    if(from) pool = pool.filter(t => (t[dateField]||t.dueDate) >= from);
-    if(to) pool = pool.filter(t => (t[dateField]||t.dueDate) <= to);
-  } else {
-    const minDate = daysAgoISO(DASH_RANGE_DAYS[range] || 7);
-    pool = pool.filter(t => (t[dateField]||t.dueDate) >= minDate);
-  }
-
-  const tabs = [
-    ['given','📚 শিক্ষকের দেওয়া পড়া'],
-    ['due','📅 পড়া আদায়ের শেষ তারিখ অনুযায়ী'],
-  ];
-  const opts = {
-    showStudent: scopedStudents.length>1,
-    actions: (t,st)=> tutorTaskActionButtons(t) + (st==='done' ? manageDoneTaskButtonsHtml(t) : '')
-  };
-  const content = tab==='due' ? rowGroupedByDueDateHtml(pool, opts) : rowGroupedByAssignedDateHtml(pool, opts);
-  return `
-  <div class="section-title" style="margin-top:24px"><h3>সকল পড়া</h3></div>
-  <div class="grid cols-2" style="margin:10px 0 12px">
-    ${tabs.map(([k,l])=>`<button class="btn-sm ${tab===k?'primary':''}" data-action="set-tutor-dash-tab" data-id="${k}">${l}</button>`).join('')}
-  </div>
-  <div class="form-grid" style="margin-bottom:14px">
-    <label>শ্রেণি
-      <select data-role="tutor-dash-class">
-        <option value="all" ${classFilter==='all'?'selected':''}>সব শ্রেণি</option>
-        ${classes.map(c=>`<option value="${c}" ${classFilter===c?'selected':''}>${c}</option>`).join('')}
-      </select>
-    </label>
-    <label>শিক্ষার্থী
-      <select data-role="tutor-dash-student">
-        <option value="" ${!activeStudent?'selected':''}>সবাই (এই ফিল্টারে)</option>
-        ${studentsInClass.map(s=>`<option value="${s.id}" ${s.id===activeStudent?'selected':''}>${s.name}</option>`).join('')}
-      </select>
-    </label>
-    <label>সময়কাল
-      <select data-role="tutor-dash-range">
-        <option value="week" ${range==='week'?'selected':''}>সাপ্তাহিক</option>
-        <option value="fortnight" ${range==='fortnight'?'selected':''}>পাক্ষিক</option>
-        <option value="month" ${range==='month'?'selected':''}>মাসিক</option>
-        <option value="custom" ${range==='custom'?'selected':''}>তারিখ অনুসারে</option>
-      </select>
-    </label>
-    ${range==='custom' ? `
-    <label>শুরুর তারিখ
-      <input type="date" data-role="tutor-dash-custom-from" value="${state.tutorDashCustomFrom||''}" />
-    </label>
-    <label>শেষ তারিখ
-      <input type="date" data-role="tutor-dash-custom-to" value="${state.tutorDashCustomTo||''}" />
-    </label>` : ''}
-  </div>
-  ${content}
-  `;
-}
 
 /* same block for the admin dashboard, but scoped to every student system-wide
    by default — kept behind a সাপ্তাহিক (default)/পাক্ষিক/মাসিক/তারিখ অনুসারে
@@ -1538,16 +1470,15 @@ function renderTutorStudents(user){
    tutor's "আমার স্টুডেন্ট" → class/student filter section. */
 const TUTOR_TASK_RANGE_DAYS = { week:7, fortnight:15, month:30 };
 function tutorTaskFilterTabsHtml(activeStudentId, visibleStudents){
-  const tab = state.tutorTaskTab==='done' ? 'done' : 'missed';
+  const tab = state.tutorTaskTab==='due' ? 'due' : 'given';
   const range = state.tutorTaskRange || 'week';
-  const dateField = tab==='done' ? 'completedDate' : 'dueDate';
+  const dateField = tab==='due' ? 'dueDate' : 'assignedDate';
 
   const pool = activeStudentId
     ? studentTasks(activeStudentId)
     : dedupeCommonTasks(tasks().filter(t=>visibleStudents.some(s=>s.id===t.studentId)));
 
-  let filtered = pool.filter(t => tab==='done' ? effectiveStatus(t)==='done' : effectiveStatus(t)!=='done');
-
+  let filtered = pool;
   if(range==='week' || range==='fortnight' || range==='month'){
     const minDate = daysAgoISO(DASH_RANGE_DAYS[range] || 7);
     filtered = filtered.filter(t => (t[dateField] || t.dueDate) >= minDate);
@@ -1557,30 +1488,15 @@ function tutorTaskFilterTabsHtml(activeStudentId, visibleStudents){
     if(to) filtered = filtered.filter(t => (t[dateField] || t.dueDate) <= to);
   }
 
-  const groups = [];
-  filtered.slice()
-    .sort((a,b)=> tab==='done' ? (b.completedDate||'').localeCompare(a.completedDate||'') : a.dueDate.localeCompare(b.dueDate))
-    .forEach(t=>{
-      const dv = t[dateField] || t.dueDate;
-      let g = groups.find(g=>g.dueDate===dv);
-      if(!g){ g = {label: relativeDateLabel(dv), dueDate: dv, items:[]}; groups.push(g); }
-      g.items.push(t);
-    });
-
-  const rowActions = tab==='done'
-    ? (t)=> t.__count>1 ? '' : (tutorTaskActionButtons(t) + manageDoneTaskButtonsHtml(t))
-    : (t)=> t.__count>1 ? '' : tutorTaskActionButtons(t);
-
-  const listHtml = groups.length ? groups.map(g=>`
-      <div class="section-title" style="margin-top:14px; margin-bottom:6px"><h3 style="font-size:.95rem">${g.label}</h3></div>
-      ${g.items.map(t=>taskRowHtml(t,{actions:rowActions})).join('')}
-    `).join('')
-    : `<div class="empty">${tab==='done' ? 'এই সময়সীমায় কোনো পড়া সম্পন্ন হয়নি।' : 'এই সময়সীমায় কোনো বাকি/মিস হওয়া পড়া নেই।'}</div>`;
+  const opts = {
+    actions: (t,st)=> t.__count>1 ? '' : (tutorTaskActionButtons(t) + (st==='done' ? manageDoneTaskButtonsHtml(t) : ''))
+  };
+  const listHtml = tab==='due' ? rowGroupedByDueDateHtml(filtered, opts) : rowGroupedByAssignedDateHtml(filtered, opts);
 
   return `
     <div class="grid cols-2" style="margin-bottom:12px">
-      <button class="btn-sm ${tab==='missed'?'primary':''}" data-action="set-tutor-task-tab" data-id="missed">❌ মিস হওয়া পড়া</button>
-      <button class="btn-sm ${tab==='done'?'primary':''}" data-action="set-tutor-task-tab" data-id="done">✅ সম্পন্ন হওয়া পড়া</button>
+      <button class="btn-sm ${tab==='given'?'primary':''}" data-action="set-tutor-task-tab" data-id="given">📚 শিক্ষকের দেওয়া পড়া</button>
+      <button class="btn-sm ${tab==='due'?'primary':''}" data-action="set-tutor-task-tab" data-id="due">📅 পড়া আদায়ের শেষ তারিখ অনুযায়ী</button>
     </div>
     <div class="form-grid" style="margin-bottom:14px">
       <label>সময়কাল
@@ -3125,6 +3041,7 @@ document.getElementById('view').addEventListener('change', async (e)=>{
     renderView();
   }
 });
+
 function form2IsNewAdduser(el){ const f = el.closest && el.closest('#adduser-form'); return f && !f.dataset.editing; }
 function form2IsNewStudentForm(el){ const f = el.closest && el.closest('#student-form'); return f && !f.dataset.editing; }
 
